@@ -25,6 +25,11 @@ fn cHandleToZig(comptime T: type, c_handle: anytype) T {
 
 pub const Flags = u32;
 pub const Error = error{
+    NotReady,
+    Timeout,
+    EventSet,
+    EventReset,
+    Incomplete,
     OutOfHostMemory,
     OutOfDeviceMemory,
     InitializationFailed,
@@ -42,8 +47,10 @@ pub const Error = error{
     InvalidExternalHandle,
     Fragmentation,
     InvalidOpaqueCaptureAddress,
+    PipelineCompileRequired,
     SurfaceLostKhr,
     NativeWindowInUseKhr,
+    SuboptimalKhr,
     OutOfDateKhr,
     IncompatibleDisplayKhr,
     ValidationFailedExt,
@@ -57,6 +64,10 @@ pub const Error = error{
     InvalidDrmFormatModifierPlaneLayoutExt,
     NotPermittedKhr,
     FullScreenExclusiveModeLostExt,
+    ThreadIdleKhr,
+    ThreadDoneKhr,
+    OperationDeferredKhr,
+    OperationNotDeferredKhr,
     InvalidVideoStdParametersKhr,
     CompressionExhaustedExt,
     IncompatibleShaderBinaryExt,
@@ -271,9 +282,9 @@ pub const AllocationCreateInfo = extern struct {
 };
 pub const PoolCreateFlags = packed struct(Flags) {
     _reserved_bit_0: bool = false,
-    _reserved_bit_1: bool = false,
     ignore_buffer_image_granularity_bit: bool = false,
     linear_algorithm_bit: bool = false,
+    _reserved_bit_3: bool = false,
     _reserved_bit_4: bool = false,
     _reserved_bit_5: bool = false,
     _reserved_bit_6: bool = false,
@@ -330,7 +341,47 @@ pub const AllocationInfo2 = extern struct {
     dedicated_memory: vk.Bool32 = vk.FALSE,
 };
 pub const Allocation = c.VmaAllocation;
-pub const DefragmentationFlags = packed struct(Flags) {};
+pub const DefragmentationFlags = packed struct(Flags) {
+    algorithm_fast_bit: bool = false,
+    algorithm_balanced_bit: bool = false,
+    algorithm_full_bit: bool = false,
+    algorithm_extensive_bit: bool = false,
+    _reserved_bit_4: bool = false,
+    _reserved_bit_5: bool = false,
+    _reserved_bit_6: bool = false,
+    _reserved_bit_7: bool = false,
+    _reserved_bit_8: bool = false,
+    _reserved_bit_9: bool = false,
+    _reserved_bit_10: bool = false,
+    _reserved_bit_11: bool = false,
+    _reserved_bit_12: bool = false,
+    _reserved_bit_13: bool = false,
+    _reserved_bit_14: bool = false,
+    _reserved_bit_15: bool = false,
+    _reserved_bit_16: bool = false,
+    _reserved_bit_17: bool = false,
+    _reserved_bit_18: bool = false,
+    _reserved_bit_19: bool = false,
+    _reserved_bit_20: bool = false,
+    _reserved_bit_21: bool = false,
+    _reserved_bit_22: bool = false,
+    _reserved_bit_23: bool = false,
+    _reserved_bit_24: bool = false,
+    _reserved_bit_25: bool = false,
+    _reserved_bit_26: bool = false,
+    _reserved_bit_27: bool = false,
+    _reserved_bit_28: bool = false,
+    _reserved_bit_29: bool = false,
+    _reserved_bit_30: bool = false,
+    _reserved_bit_31: bool = false,
+
+    pub const algorithm_mask: @This() = .{
+        .algorithm_fast_bit = true,
+        .algorithm_balanced_bit = true,
+        .algorithm_full_bit = true,
+        .algorithm_extensive_bit = true,
+    };
+};
 pub const PfnVmaCheckDefragmentationBreakFunction = ?*const fn (?*anyopaque) callconv(.C) vk.Bool32;
 pub const DefragmentationInfo = extern struct {
     flags: DefragmentationFlags = .{},
@@ -360,6 +411,100 @@ pub const DefragmentationMove = extern struct {
 pub const DefragmentationPassMoveInfo = extern struct {
     move_count: u32 = 0,
     p_moves: ?[*]DefragmentationMove = null,
+};
+pub const VirtualBlockCreateFlags = packed struct(Flags) {
+    linear_algorithm_bit: bool = false,
+    _reserved_bit_1: bool = false,
+    _reserved_bit_2: bool = false,
+    _reserved_bit_3: bool = false,
+    _reserved_bit_4: bool = false,
+    _reserved_bit_5: bool = false,
+    _reserved_bit_6: bool = false,
+    _reserved_bit_7: bool = false,
+    _reserved_bit_8: bool = false,
+    _reserved_bit_9: bool = false,
+    _reserved_bit_10: bool = false,
+    _reserved_bit_11: bool = false,
+    _reserved_bit_12: bool = false,
+    _reserved_bit_13: bool = false,
+    _reserved_bit_14: bool = false,
+    _reserved_bit_15: bool = false,
+    _reserved_bit_16: bool = false,
+    _reserved_bit_17: bool = false,
+    _reserved_bit_18: bool = false,
+    _reserved_bit_19: bool = false,
+    _reserved_bit_20: bool = false,
+    _reserved_bit_21: bool = false,
+    _reserved_bit_22: bool = false,
+    _reserved_bit_23: bool = false,
+    _reserved_bit_24: bool = false,
+    _reserved_bit_25: bool = false,
+    _reserved_bit_26: bool = false,
+    _reserved_bit_27: bool = false,
+    _reserved_bit_28: bool = false,
+    _reserved_bit_29: bool = false,
+    _reserved_bit_30: bool = false,
+    _reserved_bit_31: bool = false,
+
+    pub const algorithm_mask: @This() = .{ .linear_algorithm_bit = true };
+};
+pub const VirtualBlockCreateInfo = extern struct {
+    size: vk.DeviceSize = 0,
+    flags: VirtualBlockCreateFlags = .{},
+    p_allocation_callbacks: ?*const vk.AllocationCallbacks = null,
+};
+pub const VirtualBlock = c.VmaVirtualBlock;
+pub const VirtualAllocation = c.VmaVirtualAllocation;
+pub const VirtualAllocationInfo = extern struct {
+    offset: vk.DeviceSize = 0,
+    size: vk.DeviceSize = 0,
+    p_user_data: ?*anyopaque = null,
+};
+pub const VirtualAllocationCreateFlags = packed struct(Flags) {
+    _reserved_bit_0: bool = false,
+    _reserved_bit_1: bool = false,
+    _reserved_bit_2: bool = false,
+    _reserved_bit_3: bool = false,
+    upper_address_bit: bool = false,
+    _reserved_bit_5: bool = false,
+    _reserved_bit_6: bool = false,
+    _reserved_bit_7: bool = false,
+    _reserved_bit_8: bool = false,
+    _reserved_bit_9: bool = false,
+    _reserved_bit_10: bool = false,
+    strategy_min_memory_bit: bool = false,
+    strategy_min_time_bit: bool = false,
+    strategy_min_offset_bit: bool = false,
+    _reserved_bit_14: bool = false,
+    _reserved_bit_15: bool = false,
+    _reserved_bit_16: bool = false,
+    _reserved_bit_17: bool = false,
+    _reserved_bit_18: bool = false,
+    _reserved_bit_19: bool = false,
+    _reserved_bit_20: bool = false,
+    _reserved_bit_21: bool = false,
+    _reserved_bit_22: bool = false,
+    _reserved_bit_23: bool = false,
+    _reserved_bit_24: bool = false,
+    _reserved_bit_25: bool = false,
+    _reserved_bit_26: bool = false,
+    _reserved_bit_27: bool = false,
+    _reserved_bit_28: bool = false,
+    _reserved_bit_29: bool = false,
+    _reserved_bit_30: bool = false,
+    _reserved_bit_31: bool = false,
+
+    pub const strategy_mask: @This() = .{
+        .strategy_min_memory_bit = true,
+        .strategy_min_time_bit = true,
+        .strategy_min_offset_bit = true,
+    };
+};
+pub const VirtualAllocationCreateInfo = extern struct {
+    size: vk.DeviceSize = 0,
+    alignment: vk.DeviceSize = 0,
+    flags: VirtualAllocationCreateFlags = .{},
+    p_user_data: ?*anyopaque = null,
 };
 
 pub fn createAllocator(p_create_info: *const AllocatorCreateInfo) Error!Allocator {
@@ -832,6 +977,202 @@ pub fn createBuffer(
     return buffer;
 }
 
+pub fn createBufferWithAlignment(
+    allocator: Allocator,
+    p_buffer_create_info: *const vk.BufferCreateInfo,
+    p_allocation_create_info: *const AllocationCreateInfo,
+    min_alignment: vk.DeviceSize,
+    p_allocation: *Allocation,
+    p_allocation_info: ?*AllocationInfo,
+) Error!vk.Buffer {
+    var buffer: vk.Buffer = undefined;
+    const result = c.vmaCreateBufferWithAlignment(
+        allocator,
+        @ptrCast(p_buffer_create_info),
+        @ptrCast(p_allocation_create_info),
+        min_alignment,
+        @ptrCast(&buffer),
+        p_allocation,
+        p_allocation_info,
+    );
+    try vkCheck(result);
+    return buffer;
+}
+
+pub fn createAliasingBuffer(
+    allocator: Allocator,
+    allocation: Allocation,
+    p_buffer_create_info: *const vk.BufferCreateInfo,
+) Error!vk.Buffer {
+    var buffer: vk.Buffer = undefined;
+    const result = c.vmaCreateAliasingBuffer(
+        allocator,
+        allocation,
+        @ptrCast(p_buffer_create_info),
+        @ptrCast(&buffer),
+    );
+    try vkCheck(result);
+    return buffer;
+}
+
+pub fn createAliasingBuffer2(
+    allocator: Allocator,
+    allocation: Allocation,
+    allocation_local_offset: vk.DeviceSize,
+    p_buffer_create_info: *const vk.BufferCreateInfo,
+) Error!vk.Buffer {
+    var buffer: vk.Buffer = undefined;
+    const result = c.vmaCreateAliasingBuffer2(
+        allocator,
+        allocation,
+        allocation_local_offset,
+        @ptrCast(p_buffer_create_info),
+        @ptrCast(&buffer),
+    );
+    try vkCheck(result);
+    return buffer;
+}
+
+pub fn destroyBuffer(allocator: Allocator, buffer: vk.Buffer, allocation: Allocation) Error!void {
+    c.vmaDestroyBuffer(allocator, zigHandleToC(c.VkBuffer, buffer), allocation);
+}
+
+pub fn createImage(
+    allocator: Allocator,
+    p_image_create_info: *const vk.ImageCreateInfo,
+    p_allocation_create_info: *const AllocationCreateInfo,
+    p_allocation: *Allocation,
+    p_allocation_info: ?*AllocationInfo,
+) Error!vk.Image {
+    var image: vk.Image = undefined;
+    const result = c.vmaCreateImage(
+        allocator,
+        @ptrCast(p_image_create_info),
+        @ptrCast(p_allocation_create_info),
+        @ptrCast(&image),
+        p_allocation,
+        p_allocation_info,
+    );
+    try vkCheck(result);
+    return image;
+}
+
+pub fn createAliasingImage(
+    allocator: Allocator,
+    allocation: Allocation,
+    p_image_create_info: *const vk.ImageCreateInfo,
+) Error!vk.Image {
+    var image: vk.Image = undefined;
+    const result = c.vmaCreateAliasingImage(
+        allocator,
+        allocation,
+        @ptrCast(p_image_create_info),
+        @ptrCast(&image),
+    );
+    try vkCheck(result);
+    return image;
+}
+
+pub fn createAliasingImage2(
+    allocator: Allocator,
+    allocation: Allocation,
+    allocation_local_offset: vk.DeviceSize,
+    p_image_create_info: *const vk.ImageCreateInfo,
+) Error!vk.Image {
+    var image: vk.Image = undefined;
+    const result = c.vmaCreateAliasingImage2(
+        allocator,
+        allocation,
+        allocation_local_offset,
+        @ptrCast(p_image_create_info),
+        @ptrCast(&image),
+    );
+    try vkCheck(result);
+    return image;
+}
+
+pub fn destroyImage(allocator: Allocator, image: vk.Image, allocation: Allocation) Error!void {
+    c.vmaDestroyImage(allocator, zigHandleToC(c.VkImage, image), allocation);
+}
+
+pub fn createVirtualBlock(p_create_info: *const VirtualBlockCreateInfo) Error!VirtualBlock {
+    var block: VirtualBlock = undefined;
+    const result = c.vmaCreateVirtualBlock(@ptrCast(p_create_info), &block);
+    try vkCheck(result);
+    return block;
+}
+
+pub fn destroyVirtualBlock(virtual_block: VirtualBlock) void {
+    c.vmaDestroyVirtualBlock(virtual_block);
+}
+
+pub fn isVirtualBlockEmpty(virtual_block: VirtualBlock) vk.Bool32 {
+    return c.vmaIsVirtualBlockEmpty(virtual_block);
+}
+
+pub fn getVirtualAllocationInfo(
+    virtual_block: VirtualBlock,
+    allocation: VirtualAllocation,
+) VirtualAllocationInfo {
+    var info: VirtualAllocationInfo = undefined;
+    c.vmaGetVirtualAllocationInfo(virtual_block, allocation, @ptrCast(&info));
+    return info;
+}
+
+pub fn virtualAllocate(
+    virtual_block: VirtualBlock,
+    p_create_info: *const VirtualAllocationCreateInfo,
+    p_offset: ?*vk.DeviceSize,
+) Error!VirtualAllocation {
+    var allocation: VirtualAllocation = undefined;
+    const result = c.vmaVirtualAllocate(
+        virtual_block,
+        @ptrCast(p_create_info),
+        &allocation,
+        &p_offset,
+    );
+    try vkCheck(result);
+    return allocation;
+}
+
+pub fn virtualFree(virtual_block: VirtualBlock, allocation: VirtualAllocation) void {
+    c.vmaVirtualFree(virtual_block, allocation);
+}
+
+pub fn clearVirtualBlock(virtual_block: VirtualBlock) void {
+    c.vmaClearVirtualBlock(virtual_block);
+}
+
+pub fn setVirtualAllocationUserData(
+    virtual_block: VirtualBlock,
+    allocation: VirtualAllocation,
+    p_user_data: ?*anyopaque,
+) void {
+    c.vmaSetVirtualAllocationUserData(virtual_block, allocation, p_user_data);
+}
+
+pub fn getVirtualBlockStatistics(virtual_block: VirtualBlock) Statistics {
+    var stats: Statistics = undefined;
+    c.vmaGetVirtualBlockStatistics(virtual_block, @ptrCast(&stats));
+    return stats;
+}
+
+pub fn calculateVirtualBlockStatistics(virtual_block: VirtualBlock) DetailedStatistics {
+    var stats: DetailedStatistics = undefined;
+    c.vmaCalculateVirtualBlockStatistics(virtual_block, @ptrCast(&stats));
+    return stats;
+}
+
+pub fn buildVirtualBlockStatsString(allocator: Allocator, detailed_map: vk.Bool32) ?[*:0]u8 {
+    var ptr: ?[*:0]u8 = undefined;
+    c.vmaBuildVirtualBlockStatsString(allocator, &ptr, detailed_map);
+    return ptr;
+}
+
+pub fn freeVirtualBlockStatsString(allocator: Allocator, p_stats_string: ?[*:0]u8) void {
+    c.vmaFreeVirtualBlockStatsString(allocator, p_stats_string);
+}
+
 pub fn buildStatsString(allocator: Allocator, detailed_map: vk.Bool32) ?[*:0]u8 {
     var ptr: ?[*:0]u8 = undefined;
     c.vmaBuildStatsString(allocator, &ptr, detailed_map);
@@ -846,11 +1187,11 @@ fn vkCheck(result: c.VkResult) Error!void {
     const r: vk.Result = @enumFromInt(result);
     switch (r) {
         .success => {},
-        .not_ready => return error.not_ready,
-        .timeout => return error.timeout,
-        .event_set => return error.event_set,
-        .event_reset => return error.event_reset,
-        .incomplete => return error.incomplete,
+        .not_ready => return error.NotReady,
+        .timeout => return error.Timeout,
+        .event_set => return error.EventSet,
+        .event_reset => return error.EventReset,
+        .incomplete => return error.Incomplete,
         .error_out_of_host_memory => return error.OutOfHostMemory,
         .error_out_of_device_memory => return error.OutOfDeviceMemory,
         .error_initialization_failed => return error.InitializationFailed,
@@ -867,10 +1208,10 @@ fn vkCheck(result: c.VkResult) Error!void {
         .error_invalid_external_handle => return error.InvalidExternalHandle,
         .error_fragmentation => return error.Fragmentation,
         .error_invalid_opaque_capture_address => return error.InvalidOpaqueCaptureAddress,
-        .pipeline_compile_required => return error.pipeline_compile_required,
+        .pipeline_compile_required => return error.PipelineCompileRequired,
         .error_surface_lost_khr => return error.SurfaceLostKhr,
         .error_native_window_in_use_khr => return error.NativeWindowInUseKhr,
-        .suboptimal_khr => return error.suboptimal_khr,
+        .suboptimal_khr => return error.SuboptimalKhr,
         .error_out_of_date_khr => return error.OutOfDateKhr,
         .error_incompatible_display_khr => return error.IncompatibleDisplayKhr,
         .error_validation_failed_ext => return error.ValidationFailedExt,
@@ -884,10 +1225,10 @@ fn vkCheck(result: c.VkResult) Error!void {
         .error_invalid_drm_format_modifier_plane_layout_ext => return error.InvalidDrmFormatModifierPlaneLayoutExt,
         .error_not_permitted_khr => return error.NotPermittedKhr,
         .error_full_screen_exclusive_mode_lost_ext => return error.FullScreenExclusiveModeLostExt,
-        .thread_idle_khr => return error.thread_idle_khr,
-        .thread_done_khr => return error.thread_done_khr,
-        .operation_deferred_khr => return error.operation_deferred_khr,
-        .operation_not_deferred_khr => return error.operation_not_deferred_khr,
+        .thread_idle_khr => return error.ThreadIdleKhr,
+        .thread_done_khr => return error.ThreadDoneKhr,
+        .operation_deferred_khr => return error.OperationDeferredKhr,
+        .operation_not_deferred_khr => return error.OperationNotDeferredKhr,
         .error_invalid_video_std_parameters_khr => return error.InvalidVideoStdParametersKhr,
         .error_compression_exhausted_ext => return error.CompressionExhaustedExt,
         .error_incompatible_shader_binary_ext => return error.IncompatibleShaderBinaryExt,
