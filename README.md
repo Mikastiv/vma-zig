@@ -1,2 +1,2 @@
-# vma-zig
+# `vma-zig`
 Zig bindings for VulkanMemoryAllocator
