@@ -12,6 +12,7 @@
         "build.zig",
         "build.zig.zon",
         "src",
+        "vk_mem_alloc.h",
         "LICENSE",
         "README.md",
     },
