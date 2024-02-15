@@ -276,7 +276,7 @@ pub const AllocationCreateInfo = extern struct {
     required_flags: vk.MemoryPropertyFlags = .{},
     preferred_flags: vk.MemoryPropertyFlags = .{},
     memory_type_bits: u32 = 0,
-    pool: Pool = c.VK_NULL_HANDLE,
+    pool: Pool = @ptrCast(c.VK_NULL_HANDLE),
     p_user_data: ?*anyopaque = null,
     priority: f32 = 0,
 };
@@ -385,7 +385,7 @@ pub const DefragmentationFlags = packed struct(Flags) {
 pub const PfnVmaCheckDefragmentationBreakFunction = ?*const fn (?*anyopaque) callconv(.C) vk.Bool32;
 pub const DefragmentationInfo = extern struct {
     flags: DefragmentationFlags = .{},
-    pool: Pool = c.VK_NULL_HANDLE,
+    pool: Pool = @ptrCast(c.VK_NULL_HANDLE),
     max_bytes_per_pass: vk.DeviceSize = 0,
     max_allocations_per_pass: u32 = 0,
     pfn_break_callback: PfnVmaCheckDefragmentationBreakFunction = null,
@@ -405,8 +405,8 @@ pub const DefragmentationMoveOperation = enum(c_int) {
 };
 pub const DefragmentationMove = extern struct {
     operation: DefragmentationMoveOperation = @enumFromInt(0),
-    src_allocation: Allocation = c.VK_NULL_HANDLE,
-    dst_tmp_allocation: Allocation = c.VK_NULL_HANDLE,
+    src_allocation: Allocation = @ptrCast(c.VK_NULL_HANDLE),
+    dst_tmp_allocation: Allocation = @ptrCast(c.VK_NULL_HANDLE),
 };
 pub const DefragmentationPassMoveInfo = extern struct {
     move_count: u32 = 0,
@@ -674,7 +674,7 @@ pub fn allocateMemoryPages(
         @ptrCast(p_vk_memory_requirements.ptr),
         @ptrCast(p_create_info.ptr),
         allocation_count,
-        p_allocations,
+        @ptrCast(p_allocations),
         @ptrCast(p_allocation_info),
     );
     try vkCheck(result);
@@ -692,7 +692,7 @@ pub fn allocateMemoryForBuffer(
         zigHandleToC(c.VkBuffer, buffer),
         @ptrCast(p_create_info),
         @ptrCast(&allocation),
-        @ptrCast(&p_allocation_info),
+        @ptrCast(p_allocation_info),
     );
     try vkCheck(result);
     return allocation;
@@ -710,7 +710,7 @@ pub fn allocateMemoryForImage(
         zigHandleToC(c.VkImage, image),
         @ptrCast(p_create_info),
         @ptrCast(&allocation),
-        @ptrCast(&p_allocation_info),
+        @ptrCast(p_allocation_info),
     );
     try vkCheck(result);
     return allocation;
@@ -801,7 +801,13 @@ pub fn flushAllocations(
     offsets: ?[*]const vk.DeviceSize,
     sizes: ?[*]const vk.DeviceSize,
 ) Error!void {
-    const result = c.vmaFlushAllocations(allocator, allocation_count, allocations, offsets, sizes);
+    const result = c.vmaFlushAllocations(
+        allocator,
+        allocation_count,
+        @ptrCast(allocations),
+        @ptrCast(offsets),
+        @ptrCast(sizes),
+    );
     try vkCheck(result);
 }
 
@@ -866,7 +872,7 @@ pub fn beginDefragmentation(
     p_info: *const DefragmentationInfo,
     p_context: ?*DefragmentationContext,
 ) Error!void {
-    const result = c.vmaBeginDefragmentation(allocator, @ptrCast(p_info), p_context);
+    const result = c.vmaBeginDefragmentation(allocator, @ptrCast(p_info), @ptrCast(p_context));
     try vkCheck(result);
 }
 
@@ -970,8 +976,8 @@ pub fn createBuffer(
         @ptrCast(p_buffer_create_info),
         @ptrCast(p_allocation_create_info),
         @ptrCast(&buffer),
-        p_allocation,
-        p_allocation_info,
+        @ptrCast(p_allocation),
+        @ptrCast(p_allocation_info),
     );
     try vkCheck(result);
     return buffer;
@@ -992,8 +998,8 @@ pub fn createBufferWithAlignment(
         @ptrCast(p_allocation_create_info),
         min_alignment,
         @ptrCast(&buffer),
-        p_allocation,
-        p_allocation_info,
+        @ptrCast(p_allocation),
+        @ptrCast(p_allocation_info),
     );
     try vkCheck(result);
     return buffer;
@@ -1033,7 +1039,7 @@ pub fn createAliasingBuffer2(
     return buffer;
 }
 
-pub fn destroyBuffer(allocator: Allocator, buffer: vk.Buffer, allocation: Allocation) Error!void {
+pub fn destroyBuffer(allocator: Allocator, buffer: vk.Buffer, allocation: Allocation) void {
     c.vmaDestroyBuffer(allocator, zigHandleToC(c.VkBuffer, buffer), allocation);
 }
 
@@ -1050,8 +1056,8 @@ pub fn createImage(
         @ptrCast(p_image_create_info),
         @ptrCast(p_allocation_create_info),
         @ptrCast(&image),
-        p_allocation,
-        p_allocation_info,
+        @ptrCast(p_allocation),
+        @ptrCast(p_allocation_info),
     );
     try vkCheck(result);
     return image;
@@ -1091,7 +1097,7 @@ pub fn createAliasingImage2(
     return image;
 }
 
-pub fn destroyImage(allocator: Allocator, image: vk.Image, allocation: Allocation) Error!void {
+pub fn destroyImage(allocator: Allocator, image: vk.Image, allocation: Allocation) void {
     c.vmaDestroyImage(allocator, zigHandleToC(c.VkImage, image), allocation);
 }
 
@@ -1129,7 +1135,7 @@ pub fn virtualAllocate(
         virtual_block,
         @ptrCast(p_create_info),
         &allocation,
-        &p_offset,
+        @ptrCast(&p_offset),
     );
     try vkCheck(result);
     return allocation;
