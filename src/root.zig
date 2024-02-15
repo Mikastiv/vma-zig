@@ -240,9 +240,13 @@ pub const AllocationCreateFlags = packed struct(Flags) {
 
     pub const strategy_best_fit_bit: @This() = .{ .strategy_min_memory_bit = true };
     pub const strategy_first_fit_bit: @This() = .{ .strategy_min_time_bit = true };
-    pub const strategy_mask: @This() = .{ .strategy_min_memory_bit = true, .strategy_min_time_bit = true, .strategy_min_offset_bit = true };
+    pub const strategy_mask: @This() = .{
+        .strategy_min_memory_bit = true,
+        .strategy_min_time_bit = true,
+        .strategy_min_offset_bit = true,
+    };
 };
-pub const MemoryUsage = enum(u32) {
+pub const MemoryUsage = enum(c_uint) {
     unknown = 0,
     gpu_only = 1,
     cpu_only = 2,
@@ -326,6 +330,37 @@ pub const AllocationInfo2 = extern struct {
     dedicated_memory: vk.Bool32 = vk.FALSE,
 };
 pub const Allocation = c.VmaAllocation;
+pub const DefragmentationFlags = packed struct(Flags) {};
+pub const PfnVmaCheckDefragmentationBreakFunction = ?*const fn (?*anyopaque) callconv(.C) vk.Bool32;
+pub const DefragmentationInfo = extern struct {
+    flags: DefragmentationFlags = .{},
+    pool: Pool = c.VK_NULL_HANDLE,
+    max_bytes_per_pass: vk.DeviceSize = 0,
+    max_allocations_per_pass: u32 = 0,
+    pfn_break_callback: PfnVmaCheckDefragmentationBreakFunction = null,
+    p_break_callback_user_data: ?*anyopaque = null,
+};
+pub const DefragmentationContext = c.VmaDefragmentationContext;
+pub const DefragmentationStats = extern struct {
+    bytes_moved: vk.DeviceSize = 0,
+    bytes_freed: vk.DeviceSize = 0,
+    allocations_moved: u32 = 0,
+    device_memory_blocks_freed: u32 = 0,
+};
+pub const DefragmentationMoveOperation = enum(c_int) {
+    copy = 0,
+    ignore = 1,
+    destroy = 2,
+};
+pub const DefragmentationMove = extern struct {
+    operation: DefragmentationMoveOperation = @enumFromInt(0),
+    src_allocation: Allocation = c.VK_NULL_HANDLE,
+    dst_tmp_allocation: Allocation = c.VK_NULL_HANDLE,
+};
+pub const DefragmentationPassMoveInfo = extern struct {
+    move_count: u32 = 0,
+    p_moves: ?[*]DefragmentationMove = null,
+};
 
 pub fn createAllocator(p_create_info: *const AllocatorCreateInfo) Error!Allocator {
     var vma: Allocator = undefined;
@@ -356,7 +391,10 @@ pub fn getMemoryProperties(allocator: Allocator) *const vk.PhysicalDeviceMemoryP
     return properties;
 }
 
-pub fn getMemoryTypeProperties(allocator: Allocator, memory_type_index: u32) vk.MemoryPropertyFlags {
+pub fn getMemoryTypeProperties(
+    allocator: Allocator,
+    memory_type_index: u32,
+) vk.MemoryPropertyFlags {
     var flags: vk.MemoryPropertyFlags = undefined;
     c.vmaGetMemoryTypeProperties(allocator, memory_type_index, @ptrCast(&flags));
     return flags;
@@ -382,7 +420,12 @@ pub fn findMemoryTypeIndex(
     p_allocation_create_info: *const AllocationCreateInfo,
 ) Error!u32 {
     var type_index: u32 = undefined;
-    const result = c.vmaFindMemoryTypeIndex(allocator, memory_type_bits, @ptrCast(p_allocation_create_info), &type_index);
+    const result = c.vmaFindMemoryTypeIndex(
+        allocator,
+        memory_type_bits,
+        @ptrCast(p_allocation_create_info),
+        &type_index,
+    );
     try vkCheck(result);
     return type_index;
 }
@@ -475,23 +518,19 @@ pub fn allocateMemory(
 
 pub fn allocateMemoryPages(
     allocator: Allocator,
-    p_vk_memory_requirements: []const vk.MemoryRequirements,
-    p_create_info: []const AllocationCreateInfo,
-    p_allocations: []Allocation,
-    p_allocation_info: ?[]AllocationInfo,
+    p_vk_memory_requirements: [*]const vk.MemoryRequirements,
+    p_create_info: [*]const AllocationCreateInfo,
+    allocation_count: usize,
+    p_allocations: [*]Allocation,
+    p_allocation_info: ?[*]AllocationInfo,
 ) Error!void {
-    const len = p_vk_memory_requirements.len;
-    std.debug.assert(len == p_create_info.len and len == p_allocations.len);
-    if (p_allocation_info) |alloc_info| std.debug.assert(len == alloc_info.len);
-
-    const info: ?[*]AllocationInfo = if (p_allocation_info) |alloc_info| alloc_info.ptr else null;
     const result = c.vmaAllocateMemoryPages(
         allocator,
         @ptrCast(p_vk_memory_requirements.ptr),
         @ptrCast(p_create_info.ptr),
-        len,
-        @ptrCast(p_allocations.ptr),
-        @ptrCast(info),
+        allocation_count,
+        p_allocations,
+        @ptrCast(p_allocation_info),
     );
     try vkCheck(result);
 }
@@ -554,15 +593,26 @@ pub fn getAllocationInfo2(allocator: Allocator, allocation: Allocation) Allocati
     return alloc_info;
 }
 
-pub fn setAllocationUserData(allocator: Allocator, allocation: Allocation, p_user_data: ?*anyopaque) void {
+pub fn setAllocationUserData(
+    allocator: Allocator,
+    allocation: Allocation,
+    p_user_data: ?*anyopaque,
+) void {
     c.vmaSetAllocationUserData(allocator, allocation, p_user_data);
 }
 
-pub fn setAllocationName(allocator: Allocator, allocation: Allocation, p_name: ?[*:0]const u8) void {
+pub fn setAllocationName(
+    allocator: Allocator,
+    allocation: Allocation,
+    p_name: ?[*:0]const u8,
+) void {
     c.vmaSetAllocationName(allocator, allocation, p_name);
 }
 
-pub fn getAllocationMemoryProperties(allocator: Allocator, allocation: Allocation) vk.MemoryPropertyFlags {
+pub fn getAllocationMemoryProperties(
+    allocator: Allocator,
+    allocation: Allocation,
+) vk.MemoryPropertyFlags {
     var flags: vk.MemoryPropertyFlags = undefined;
     c.vmaGetAllocationMemoryProperties(allocator, allocation, @ptrCast(&flags));
     return flags;
@@ -579,6 +629,129 @@ pub fn unmapMemory(allocator: Allocator, allocation: Allocation) void {
     c.vmaUnmapMemory(allocator, allocation);
 }
 
+pub fn flushAllocation(
+    allocator: Allocator,
+    allocation: Allocation,
+    offset: vk.DeviceSize,
+    size: vk.DeviceSize,
+) Error!void {
+    const result = c.vmaFlushAllocation(allocator, allocation, offset, size);
+    try vkCheck(result);
+}
+
+pub fn invalidateAllocation(
+    allocator: Allocator,
+    allocation: Allocation,
+    offset: vk.DeviceSize,
+    size: vk.DeviceSize,
+) Error!void {
+    const result = c.vmaInvalidateAllocation(allocator, allocation, offset, size);
+    try vkCheck(result);
+}
+
+pub fn flushAllocations(
+    allocator: Allocator,
+    allocation_count: u32,
+    allocations: [*]const Allocation,
+    offsets: ?[*]const vk.DeviceSize,
+    sizes: ?[*]const vk.DeviceSize,
+) Error!void {
+    const result = c.vmaFlushAllocations(allocator, allocation_count, allocations, offsets, sizes);
+    try vkCheck(result);
+}
+
+pub fn invalidateAllocations(
+    allocator: Allocator,
+    allocation_count: u32,
+    allocations: []const Allocation,
+    offsets: ?[]const vk.DeviceSize,
+    sizes: ?[]const vk.DeviceSize,
+) Error!void {
+    const result = c.vmaInvalidateAllocations(
+        allocator,
+        allocation_count,
+        allocations,
+        offsets,
+        sizes,
+    );
+    try vkCheck(result);
+}
+
+pub fn copyMemoryToAllocation(
+    allocator: Allocator,
+    p_src_host_pointer: ?*const anyopaque,
+    dst_allocation: Allocation,
+    dst_allocation_local_offset: vk.DeviceSize,
+    size: vk.DeviceSize,
+) Error!void {
+    const result = c.vmaCopyMemoryToAllocation(
+        allocator,
+        p_src_host_pointer,
+        dst_allocation,
+        dst_allocation_local_offset,
+        size,
+    );
+    try vkCheck(result);
+}
+
+pub fn copyAllocationToMemory(
+    allocator: Allocator,
+    src_allocation: Allocation,
+    src_allocation_local_offset: vk.DeviceSize,
+    p_dst_host_pointer: ?*anyopaque,
+    size: vk.DeviceSize,
+) Error!void {
+    const result = c.vmaCopyAllocationToMemory(
+        allocator,
+        src_allocation,
+        src_allocation_local_offset,
+        p_dst_host_pointer,
+        size,
+    );
+    try vkCheck(result);
+}
+
+pub fn checkCorruption(allocator: Allocator, memory_type_bits: u32) Error!void {
+    const result = c.vmaCheckCorruption(allocator, memory_type_bits);
+    try vkCheck(result);
+}
+
+pub fn beginDefragmentation(
+    allocator: Allocator,
+    p_info: *const DefragmentationInfo,
+    p_context: ?*DefragmentationContext,
+) Error!void {
+    const result = c.vmaBeginDefragmentation(allocator, @ptrCast(p_info), p_context);
+    try vkCheck(result);
+}
+
+pub fn endDefragmentation(
+    allocator: Allocator,
+    context: DefragmentationContext,
+    p_stats: ?*DefragmentationStats,
+) void {
+    c.vmaEndDefragmentation(allocator, context, @ptrCast(p_stats));
+}
+
+pub fn beginDefragmentationPass(
+    allocator: Allocator,
+    context: DefragmentationContext,
+) Error!DefragmentationPassMoveInfo {
+    var pass_info: DefragmentationPassMoveInfo = undefined;
+    const result = c.vmaBeginDefragmentationPass(allocator, context, @ptrCast(&pass_info));
+    try vkCheck(result);
+    return pass_info;
+}
+
+pub fn endDefragmentationPass(
+    allocator: Allocator,
+    context: DefragmentationContext,
+    p_pass_info: *DefragmentationPassMoveInfo,
+) Error!void {
+    const result = c.vmaEndDefragmentationPass(allocator, context, @ptrCast(p_pass_info));
+    try vkCheck(result);
+}
+
 pub fn buildStatsString(allocator: Allocator, detailed_map: vk.Bool32) ?[*:0]u8 {
     var ptr: ?[*:0]u8 = undefined;
     c.vmaBuildStatsString(allocator, &ptr, detailed_map);
@@ -590,10 +763,14 @@ pub fn freeStatsString(allocator: Allocator, p_stats_string: ?[*:0]u8) void {
 }
 
 fn vkCheck(result: c.VkResult) Error!void {
-    if (result >= 0) return;
-
     const r: vk.Result = @enumFromInt(result);
     switch (r) {
+        .success => {},
+        .not_ready => return error.not_ready,
+        .timeout => return error.timeout,
+        .event_set => return error.event_set,
+        .event_reset => return error.event_reset,
+        .incomplete => return error.incomplete,
         .error_out_of_host_memory => return error.OutOfHostMemory,
         .error_out_of_device_memory => return error.OutOfDeviceMemory,
         .error_initialization_failed => return error.InitializationFailed,
@@ -610,8 +787,10 @@ fn vkCheck(result: c.VkResult) Error!void {
         .error_invalid_external_handle => return error.InvalidExternalHandle,
         .error_fragmentation => return error.Fragmentation,
         .error_invalid_opaque_capture_address => return error.InvalidOpaqueCaptureAddress,
+        .pipeline_compile_required => return error.pipeline_compile_required,
         .error_surface_lost_khr => return error.SurfaceLostKhr,
         .error_native_window_in_use_khr => return error.NativeWindowInUseKhr,
+        .suboptimal_khr => return error.suboptimal_khr,
         .error_out_of_date_khr => return error.OutOfDateKhr,
         .error_incompatible_display_khr => return error.IncompatibleDisplayKhr,
         .error_validation_failed_ext => return error.ValidationFailedExt,
@@ -625,6 +804,10 @@ fn vkCheck(result: c.VkResult) Error!void {
         .error_invalid_drm_format_modifier_plane_layout_ext => return error.InvalidDrmFormatModifierPlaneLayoutExt,
         .error_not_permitted_khr => return error.NotPermittedKhr,
         .error_full_screen_exclusive_mode_lost_ext => return error.FullScreenExclusiveModeLostExt,
+        .thread_idle_khr => return error.thread_idle_khr,
+        .thread_done_khr => return error.thread_done_khr,
+        .operation_deferred_khr => return error.operation_deferred_khr,
+        .operation_not_deferred_khr => return error.operation_not_deferred_khr,
         .error_invalid_video_std_parameters_khr => return error.InvalidVideoStdParametersKhr,
         .error_compression_exhausted_ext => return error.CompressionExhaustedExt,
         .error_incompatible_shader_binary_ext => return error.IncompatibleShaderBinaryExt,
