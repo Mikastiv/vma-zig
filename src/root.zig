@@ -752,6 +752,86 @@ pub fn endDefragmentationPass(
     try vkCheck(result);
 }
 
+pub fn bindBufferMemory(
+    allocator: Allocator,
+    allocation: Allocation,
+    buffer: vk.Buffer,
+) Error!void {
+    const result = c.vmaBindBufferMemory(
+        allocator,
+        allocation,
+        zigHandleToC(c.VkBuffer, buffer),
+    );
+    try vkCheck(result);
+}
+
+pub fn bindBufferMemory2(
+    allocator: Allocator,
+    allocation: Allocation,
+    allocation_local_offset: vk.DeviceSize,
+    buffer: vk.Buffer,
+    p_next: ?*const anyopaque,
+) Error!void {
+    const result = c.vmaBindBufferMemory2(
+        allocator,
+        allocation,
+        allocation_local_offset,
+        zigHandleToC(c.VkBuffer, buffer),
+        p_next,
+    );
+    try vkCheck(result);
+}
+
+pub fn bindImageMemory(
+    allocator: Allocator,
+    allocation: Allocation,
+    image: vk.Image,
+) Error!void {
+    const result = c.vmaBindImageMemory(
+        allocator,
+        allocation,
+        zigHandleToC(c.VkImage, image),
+    );
+    try vkCheck(result);
+}
+
+pub fn bindImageMemory2(
+    allocator: Allocator,
+    allocation: Allocation,
+    allocation_local_offset: vk.DeviceSize,
+    image: vk.Image,
+    p_next: ?*const anyopaque,
+) Error!void {
+    const result = c.vmaBindImageMemory2(
+        allocator,
+        allocation,
+        allocation_local_offset,
+        zigHandleToC(c.VkImage, image),
+        p_next,
+    );
+    try vkCheck(result);
+}
+
+pub fn createBuffer(
+    allocator: Allocator,
+    p_buffer_create_info: *const vk.BufferCreateInfo,
+    p_allocation_create_info: *const AllocationCreateInfo,
+    p_allocation: *Allocation,
+    p_allocation_info: ?*AllocationInfo,
+) Error!vk.Buffer {
+    var buffer: vk.Buffer = undefined;
+    const result = c.vmaCreateBuffer(
+        allocator,
+        @ptrCast(p_buffer_create_info),
+        @ptrCast(p_allocation_create_info),
+        @ptrCast(&buffer),
+        p_allocation,
+        p_allocation_info,
+    );
+    try vkCheck(result);
+    return buffer;
+}
+
 pub fn buildStatsString(allocator: Allocator, detailed_map: vk.Bool32) ?[*:0]u8 {
     var ptr: ?[*:0]u8 = undefined;
     c.vmaBuildStatsString(allocator, &ptr, detailed_map);
