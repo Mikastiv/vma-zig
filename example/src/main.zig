@@ -24,7 +24,7 @@ pub fn main() !void {
     const instance = try vkk.Instance.create(allocator, c.glfwGetInstanceProcAddress, .{});
     const surface = try window.createSurface(instance.handle);
     const physical_device = try vkk.PhysicalDevice.select(allocator, &instance, .{ .surface = surface });
-    const device = try vkk.Device.create(allocator, &physical_device, null);
+    const device = try vkk.Device.create(allocator, &physical_device, null, null);
 
     const vma_info: vma.AllocatorCreateInfo = .{
         .instance = instance.handle,

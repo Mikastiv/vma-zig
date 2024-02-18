@@ -6,8 +6,8 @@
             .path = "../",
         },
         .vk_kickstart = .{
-            .url = "https://github.com/Mikastiv/vk-kickstart/archive/f7eafac039803587a001c6726f6f90767f5cd34f.tar.gz",
-            .hash = "12204fa70c8458c9dd110a280282aab116af275e3b57f43f687706ccf6e43d7f03d4",
+            .url = "https://github.com/Mikastiv/vk-kickstart/archive/011fbc50a4490ebf7ae09d6e46c6271cb8e42a28.tar.gz",
+            .hash = "1220baf586fbef9362579851dbb0c4a3dc61bc887a2a7ae17e2c776b8d4cc5b5a62e",
         },
         .glfw = .{
             .url = "https://pkg.machengine.org/glfw/586e14a964740747ca7913fc17096b3bb3d52409.tar.gz",
