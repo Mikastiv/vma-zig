@@ -516,6 +516,14 @@ pub const VirtualAllocationCreateInfo = extern struct {
     flags: VirtualAllocationCreateFlags = .{},
     p_user_data: ?*anyopaque = null,
 };
+pub const AllocatedBuffer = struct {
+    handle: vk.Buffer,
+    allocation: Allocation,
+};
+pub const AllocatedImage = struct {
+    handle: vk.Image,
+    allocation: Allocation,
+};
 
 pub fn createAllocator(p_create_info: *const AllocatorCreateInfo) Error!Allocator {
     var vma: Allocator = undefined;
@@ -880,10 +888,11 @@ pub fn checkCorruption(allocator: Allocator, memory_type_bits: u32) Error!void {
 pub fn beginDefragmentation(
     allocator: Allocator,
     p_info: *const DefragmentationInfo,
-    p_context: ?*DefragmentationContext,
-) Error!void {
-    const result = c.vmaBeginDefragmentation(allocator, @ptrCast(p_info), @ptrCast(p_context));
+) Error!DefragmentationContext {
+    var context: DefragmentationContext = undefined;
+    const result = c.vmaBeginDefragmentation(allocator, @ptrCast(p_info), @ptrCast(&context));
     try vkCheck(result);
+    return context;
 }
 
 pub fn endDefragmentation(
@@ -977,20 +986,20 @@ pub fn createBuffer(
     allocator: Allocator,
     p_buffer_create_info: *const vk.BufferCreateInfo,
     p_allocation_create_info: *const AllocationCreateInfo,
-    p_allocation: *Allocation,
     p_allocation_info: ?*AllocationInfo,
-) Error!vk.Buffer {
+) Error!AllocatedBuffer {
     var buffer: vk.Buffer = undefined;
+    var allocation: Allocation = undefined;
     const result = c.vmaCreateBuffer(
         allocator,
         @ptrCast(p_buffer_create_info),
         @ptrCast(p_allocation_create_info),
         @ptrCast(&buffer),
-        @ptrCast(p_allocation),
+        @ptrCast(&allocation),
         @ptrCast(p_allocation_info),
     );
     try vkCheck(result);
-    return buffer;
+    return .{ .handle = buffer, .allocation = allocation };
 }
 
 pub fn createBufferWithAlignment(
@@ -998,21 +1007,21 @@ pub fn createBufferWithAlignment(
     p_buffer_create_info: *const vk.BufferCreateInfo,
     p_allocation_create_info: *const AllocationCreateInfo,
     min_alignment: vk.DeviceSize,
-    p_allocation: *Allocation,
     p_allocation_info: ?*AllocationInfo,
-) Error!vk.Buffer {
+) Error!AllocatedBuffer {
     var buffer: vk.Buffer = undefined;
+    var allocation: Allocation = undefined;
     const result = c.vmaCreateBufferWithAlignment(
         allocator,
         @ptrCast(p_buffer_create_info),
         @ptrCast(p_allocation_create_info),
         min_alignment,
         @ptrCast(&buffer),
-        @ptrCast(p_allocation),
+        @ptrCast(&allocation),
         @ptrCast(p_allocation_info),
     );
     try vkCheck(result);
-    return buffer;
+    return .{ .handle = buffer, .allocation = allocation };
 }
 
 pub fn createAliasingBuffer(
@@ -1057,20 +1066,20 @@ pub fn createImage(
     allocator: Allocator,
     p_image_create_info: *const vk.ImageCreateInfo,
     p_allocation_create_info: *const AllocationCreateInfo,
-    p_allocation: *Allocation,
     p_allocation_info: ?*AllocationInfo,
-) Error!vk.Image {
+) Error!AllocatedImage {
     var image: vk.Image = undefined;
+    var allocation: Allocation = undefined;
     const result = c.vmaCreateImage(
         allocator,
         @ptrCast(p_image_create_info),
         @ptrCast(p_allocation_create_info),
         @ptrCast(&image),
-        @ptrCast(p_allocation),
+        @ptrCast(&allocation),
         @ptrCast(p_allocation_info),
     );
     try vkCheck(result);
-    return image;
+    return .{ .handle = image, .allocation = allocation };
 }
 
 pub fn createAliasingImage(
@@ -1145,7 +1154,7 @@ pub fn virtualAllocate(
         virtual_block,
         @ptrCast(p_create_info),
         &allocation,
-        @ptrCast(&p_offset),
+        @ptrCast(p_offset),
     );
     try vkCheck(result);
     return allocation;
