@@ -12,17 +12,6 @@ fn zigHandleToC(comptime T: type, zig_handle: anytype) T {
     return handle_c;
 }
 
-fn cHandleToZig(comptime T: type, c_handle: anytype) T {
-    const Z = @typeInfo(@TypeOf(c_handle));
-    if (Z != .Optional) @compileError("must be a Vulkan handle");
-    if (@typeInfo(Z.Optional.child) != .Pointer) @compileError("must be a Vulkan handle");
-
-    const handle_int: u64 = @intFromPtr(c_handle);
-    const handle_zig: T = @enumFromInt(handle_int);
-
-    return handle_zig;
-}
-
 pub const Flags = u32;
 pub const Error = error{
     NotReady,
@@ -74,8 +63,6 @@ pub const Error = error{
     _,
 };
 
-pub const Allocator = c.VmaAllocator;
-
 pub const AllocatorCreateFlags = packed struct(Flags) {
     externally_synchronized_bit: bool = false,
     khr_dedicated_allocation_bit: bool = false,
@@ -111,11 +98,11 @@ pub const AllocatorCreateFlags = packed struct(Flags) {
     _reserved_bit_31: bool = false,
     pub usingnamespace vk.FlagsMixin(@This());
 };
-pub const PfnAllocateDeviceMemoryFunction = ?*const fn (Allocator, u32, vk.DeviceMemory, vk.DeviceSize, ?*anyopaque) callconv(.C) void;
-pub const PfnFreeDeviceMemoryFunction = ?*const fn (Allocator, u32, vk.DeviceMemory, vk.DeviceSize, ?*anyopaque) callconv(.C) void;
+pub const PfnVmaAllocateDeviceMemoryFunction = ?*const fn (AllocatorHandle, u32, vk.DeviceMemory, vk.DeviceSize, ?*anyopaque) callconv(.C) void;
+pub const PfnVmaFreeDeviceMemoryFunction = ?*const fn (AllocatorHandle, u32, vk.DeviceMemory, vk.DeviceSize, ?*anyopaque) callconv(.C) void;
 pub const DeviceMemoryCallbacks = extern struct {
-    pfn_allocate: PfnAllocateDeviceMemoryFunction = null,
-    pfn_free: PfnFreeDeviceMemoryFunction = null,
+    pfn_allocate: PfnVmaAllocateDeviceMemoryFunction = null,
+    pfn_free: PfnVmaFreeDeviceMemoryFunction = null,
     p_user_data: ?*anyopaque = null,
 };
 pub const PfnVkVoidFunction = ?*const fn () callconv(.C) void;
@@ -461,7 +448,6 @@ pub const VirtualBlockCreateInfo = extern struct {
     flags: VirtualBlockCreateFlags = .{},
     p_allocation_callbacks: ?*const vk.AllocationCallbacks = null,
 };
-pub const VirtualBlock = c.VmaVirtualBlock;
 pub const VirtualAllocation = c.VmaVirtualAllocation;
 pub const VirtualAllocationInfo = extern struct {
     offset: vk.DeviceSize = 0,
@@ -524,689 +510,698 @@ pub const AllocatedImage = struct {
     handle: vk.Image,
     allocation: Allocation,
 };
+pub const AllocatorHandle = c.VmaAllocator;
+pub const VirtualBlockHandle = c.VmaVirtualBlock;
+pub const Allocator = struct {
+    handle: AllocatorHandle,
 
-pub fn createAllocator(p_create_info: *const AllocatorCreateInfo) Error!Allocator {
-    var vma: Allocator = undefined;
-    const result = c.vmaCreateAllocator(@ptrCast(p_create_info), &vma);
-    try vkCheck(result);
-    return vma;
-}
-
-pub fn destroyAllocator(allocator: Allocator) void {
-    c.vmaDestroyAllocator(allocator);
-}
-
-pub fn getAllocatorInfo(allocator: Allocator) AllocatorInfo {
-    var allocator_info: AllocatorInfo = undefined;
-    c.vmaGetAllocatorInfo(allocator, @ptrCast(&allocator_info));
-    return allocator_info;
-}
-
-pub fn getPhysicalDeviceProperties(allocator: Allocator) *const vk.PhysicalDeviceProperties {
-    var properties: *const vk.PhysicalDeviceProperties = undefined;
-    c.vmaGetPhysicalDeviceProperties(allocator, @ptrCast(&properties));
-    return properties;
-}
-
-pub fn getMemoryProperties(allocator: Allocator) *const vk.PhysicalDeviceMemoryProperties {
-    var properties: *const vk.PhysicalDeviceMemoryProperties = undefined;
-    c.vmaGetMemoryProperties(allocator, @ptrCast(&properties));
-    return properties;
-}
-
-pub fn getMemoryTypeProperties(
-    allocator: Allocator,
-    memory_type_index: u32,
-) vk.MemoryPropertyFlags {
-    var flags: vk.MemoryPropertyFlags = undefined;
-    c.vmaGetMemoryTypeProperties(allocator, memory_type_index, @ptrCast(&flags));
-    return flags;
-}
-
-pub fn setCurrentFrameIndex(allocator: Allocator, frame_index: u32) void {
-    c.vmaSetCurrentFrameIndex(allocator, frame_index);
-}
-
-pub fn calculateStatistics(allocator: Allocator) TotalStatistics {
-    var statistics: TotalStatistics = undefined;
-    c.vmaCalculateStatistics(allocator, @ptrCast(&statistics));
-    return statistics;
-}
-
-pub fn getHeapBudgets(allocator: Allocator, p_budgets: [*]Budget) void {
-    c.vmaGetHeapBudgets(allocator, @ptrCast(p_budgets));
-}
-
-pub fn findMemoryTypeIndex(
-    allocator: Allocator,
-    memory_type_bits: u32,
-    p_allocation_create_info: *const AllocationCreateInfo,
-) Error!u32 {
-    var type_index: u32 = undefined;
-    const result = c.vmaFindMemoryTypeIndex(
-        allocator,
-        memory_type_bits,
-        @ptrCast(p_allocation_create_info),
-        &type_index,
-    );
-    try vkCheck(result);
-    return type_index;
-}
-
-pub fn findMemoryTypeIndexForBufferInfo(
-    allocator: Allocator,
-    p_buffer_create_info: *const vk.BufferCreateInfo,
-    p_allocation_create_info: *const AllocationCreateInfo,
-) Error!u32 {
-    var type_index: u32 = undefined;
-    const result = c.vmaFindMemoryTypeIndexForBufferInfo(
-        allocator,
-        @ptrCast(p_buffer_create_info),
-        @ptrCast(p_allocation_create_info),
-        &type_index,
-    );
-    try vkCheck(result);
-    return type_index;
-}
-
-pub fn findMemoryTypeIndexForImageInfo(
-    allocator: Allocator,
-    p_image_create_info: *const vk.ImageCreateInfo,
-    p_allocation_create_info: *const AllocationCreateInfo,
-) Error!u32 {
-    var type_index: u32 = undefined;
-    const result = c.vmaFindMemoryTypeIndexForImageInfo(
-        allocator,
-        @ptrCast(p_image_create_info),
-        @ptrCast(p_allocation_create_info),
-        &type_index,
-    );
-    try vkCheck(result);
-    return type_index;
-}
-
-pub fn createPool(allocator: Allocator, p_create_info: *const PoolCreateInfo) Error!Pool {
-    var pool: Pool = undefined;
-    const result = c.vmaCreatePool(allocator, @ptrCast(p_create_info), @ptrCast(&pool));
-    try vkCheck(result);
-    return pool;
-}
-
-pub fn destroyPool(allocator: Allocator, pool: Pool) void {
-    c.vmaDestroyPool(allocator, pool);
-}
-
-pub fn getPoolStatistics(allocator: Allocator, pool: Pool) Statistics {
-    var stats: Statistics = undefined;
-    c.vmaGetPoolStatistics(allocator, pool, @ptrCast(&stats));
-    return stats;
-}
-
-pub fn calculatePoolStatistics(allocator: Allocator, pool: Pool) DetailedStatistics {
-    var stats: DetailedStatistics = undefined;
-    c.vmaCalculatePoolStatistics(allocator, pool, @ptrCast(&stats));
-    return stats;
-}
-
-pub fn vmaCheckPoolCorruption(allocator: Allocator, pool: Pool) Error!void {
-    const result = c.vmaCheckPoolCorruption(allocator, pool);
-    try vkCheck(result);
-}
-
-pub fn getPoolName(allocator: Allocator, pool: Pool) ?[*:0]const u8 {
-    var name: ?[*:0]const u8 = undefined;
-    c.vmaGetPoolName(allocator, pool, &name);
-    return name;
-}
-
-pub fn setPoolName(allocator: Allocator, pool: Pool, name: ?[*:0]const u8) void {
-    c.vmaSetPoolName(allocator, pool, name);
-}
-
-pub fn allocateMemory(
-    allocator: Allocator,
-    p_vk_memory_requirements: *const vk.MemoryRequirements,
-    p_allocation_info: ?*AllocationInfo,
-) Error!Allocation {
-    var allocation: Allocation = undefined;
-    const result = c.vmaAllocatorMemory(
-        allocator,
-        @ptrCast(p_vk_memory_requirements),
-        @ptrCast(&allocation),
-        @ptrCast(p_allocation_info),
-    );
-    try vkCheck(result);
-    return allocation;
-}
-
-pub fn allocateMemoryPages(
-    allocator: Allocator,
-    p_vk_memory_requirements: [*]const vk.MemoryRequirements,
-    p_create_info: [*]const AllocationCreateInfo,
-    allocation_count: usize,
-    p_allocations: [*]Allocation,
-    p_allocation_info: ?[*]AllocationInfo,
-) Error!void {
-    const result = c.vmaAllocateMemoryPages(
-        allocator,
-        @ptrCast(p_vk_memory_requirements.ptr),
-        @ptrCast(p_create_info.ptr),
-        allocation_count,
-        @ptrCast(p_allocations),
-        @ptrCast(p_allocation_info),
-    );
-    try vkCheck(result);
-}
-
-pub fn allocateMemoryForBuffer(
-    allocator: Allocator,
-    buffer: vk.Buffer,
-    p_create_info: *const AllocationCreateInfo,
-    p_allocation_info: ?*AllocationInfo,
-) Error!Allocation {
-    var allocation: Allocation = undefined;
-    const result = c.vmaAllocateMemoryForBuffer(
-        allocator,
-        zigHandleToC(c.VkBuffer, buffer),
-        @ptrCast(p_create_info),
-        @ptrCast(&allocation),
-        @ptrCast(p_allocation_info),
-    );
-    try vkCheck(result);
-    return allocation;
-}
-
-pub fn allocateMemoryForImage(
-    allocator: Allocator,
-    image: vk.Image,
-    p_create_info: *const AllocationCreateInfo,
-    p_allocation_info: ?*AllocationInfo,
-) Error!Allocation {
-    var allocation: Allocation = undefined;
-    const result = c.vmaAllocateMemoryForImage(
-        allocator,
-        zigHandleToC(c.VkImage, image),
-        @ptrCast(p_create_info),
-        @ptrCast(&allocation),
-        @ptrCast(p_allocation_info),
-    );
-    try vkCheck(result);
-    return allocation;
-}
-
-pub fn freeMemory(allocator: Allocator, allocation: Allocation) void {
-    c.vmaFreeMemory(allocator, allocation);
-}
-
-pub fn freeMemoryPages(allocator: Allocator, allocations: ?[]const Allocation) void {
-    if (allocations) |allocs| {
-        c.vmaFreeMemoryPages(allocator, allocs.len, allocs.ptr);
+    pub fn create(p_create_info: *const AllocatorCreateInfo) Error!@This() {
+        var handle: AllocatorHandle = undefined;
+        const result = c.vmaCreateAllocator(@ptrCast(p_create_info), &handle);
+        try vkCheck(result);
+        return .{ .handle = handle };
     }
-}
 
-pub fn getAllocationInfo(allocator: Allocator, allocation: Allocation) AllocationInfo {
-    var alloc_info: AllocationInfo = undefined;
-    c.vmaGetAllocationInfo(allocator, allocation, @ptrCast(&alloc_info));
-    return alloc_info;
-}
+    pub fn destroy(self: @This()) void {
+        c.vmaDestroyAllocator(self.handle);
+    }
 
-pub fn getAllocationInfo2(allocator: Allocator, allocation: Allocation) AllocationInfo2 {
-    var alloc_info: AllocationInfo2 = undefined;
-    c.vmaGetAllocationInfo(allocator, allocation, @ptrCast(&alloc_info));
-    return alloc_info;
-}
+    pub fn getAllocatorInfo(self: @This()) AllocatorInfo {
+        var allocator_info: AllocatorInfo = undefined;
+        c.vmaGetAllocatorInfo(self.handle, @ptrCast(&allocator_info));
+        return allocator_info;
+    }
 
-pub fn setAllocationUserData(
-    allocator: Allocator,
-    allocation: Allocation,
-    p_user_data: ?*anyopaque,
-) void {
-    c.vmaSetAllocationUserData(allocator, allocation, p_user_data);
-}
+    pub fn getPhysicalDeviceProperties(self: @This()) *const vk.PhysicalDeviceProperties {
+        var properties: *const vk.PhysicalDeviceProperties = undefined;
+        c.vmaGetPhysicalDeviceProperties(self.handle, @ptrCast(&properties));
+        return properties;
+    }
 
-pub fn setAllocationName(
-    allocator: Allocator,
-    allocation: Allocation,
-    p_name: ?[*:0]const u8,
-) void {
-    c.vmaSetAllocationName(allocator, allocation, p_name);
-}
+    pub fn getMemoryProperties(self: @This()) *const vk.PhysicalDeviceMemoryProperties {
+        var properties: *const vk.PhysicalDeviceMemoryProperties = undefined;
+        c.vmaGetMemoryProperties(self.handle, @ptrCast(&properties));
+        return properties;
+    }
 
-pub fn getAllocationMemoryProperties(
-    allocator: Allocator,
-    allocation: Allocation,
-) vk.MemoryPropertyFlags {
-    var flags: vk.MemoryPropertyFlags = undefined;
-    c.vmaGetAllocationMemoryProperties(allocator, allocation, @ptrCast(&flags));
-    return flags;
-}
+    pub fn getMemoryTypeProperties(
+        self: @This(),
+        memory_type_index: u32,
+    ) vk.MemoryPropertyFlags {
+        var flags: vk.MemoryPropertyFlags = undefined;
+        c.vmaGetMemoryTypeProperties(self.handle, memory_type_index, @ptrCast(&flags));
+        return flags;
+    }
 
-pub fn mapMemory(allocator: Allocator, allocation: Allocation) Error!?*anyopaque {
-    var ptr: ?*anyopaque = undefined;
-    const result = c.vmaMapMemory(allocator, allocation, &ptr);
-    try vkCheck(result);
-    return ptr;
-}
+    pub fn setCurrentFrameIndex(self: @This(), frame_index: u32) void {
+        c.vmaSetCurrentFrameIndex(self.handle, frame_index);
+    }
 
-pub fn unmapMemory(allocator: Allocator, allocation: Allocation) void {
-    c.vmaUnmapMemory(allocator, allocation);
-}
+    pub fn calculateStatistics(self: @This()) TotalStatistics {
+        var statistics: TotalStatistics = undefined;
+        c.vmaCalculateStatistics(self.handle, @ptrCast(&statistics));
+        return statistics;
+    }
 
-pub fn flushAllocation(
-    allocator: Allocator,
-    allocation: Allocation,
-    offset: vk.DeviceSize,
-    size: vk.DeviceSize,
-) Error!void {
-    const result = c.vmaFlushAllocation(allocator, allocation, offset, size);
-    try vkCheck(result);
-}
+    pub fn getHeapBudgets(self: @This(), p_budgets: [*]Budget) void {
+        c.vmaGetHeapBudgets(self.handle, @ptrCast(p_budgets));
+    }
 
-pub fn invalidateAllocation(
-    allocator: Allocator,
-    allocation: Allocation,
-    offset: vk.DeviceSize,
-    size: vk.DeviceSize,
-) Error!void {
-    const result = c.vmaInvalidateAllocation(allocator, allocation, offset, size);
-    try vkCheck(result);
-}
+    pub fn findMemoryTypeIndex(
+        self: @This(),
+        memory_type_bits: u32,
+        p_allocation_create_info: *const AllocationCreateInfo,
+    ) Error!u32 {
+        var type_index: u32 = undefined;
+        const result = c.vmaFindMemoryTypeIndex(
+            self.handle,
+            memory_type_bits,
+            @ptrCast(p_allocation_create_info),
+            &type_index,
+        );
+        try vkCheck(result);
+        return type_index;
+    }
 
-pub fn flushAllocations(
-    allocator: Allocator,
-    allocation_count: u32,
-    allocations: [*]const Allocation,
-    offsets: ?[*]const vk.DeviceSize,
-    sizes: ?[*]const vk.DeviceSize,
-) Error!void {
-    const result = c.vmaFlushAllocations(
-        allocator,
-        allocation_count,
-        @ptrCast(allocations),
-        @ptrCast(offsets),
-        @ptrCast(sizes),
-    );
-    try vkCheck(result);
-}
+    pub fn findMemoryTypeIndexForBufferInfo(
+        self: @This(),
+        p_buffer_create_info: *const vk.BufferCreateInfo,
+        p_allocation_create_info: *const AllocationCreateInfo,
+    ) Error!u32 {
+        var type_index: u32 = undefined;
+        const result = c.vmaFindMemoryTypeIndexForBufferInfo(
+            self.handle,
+            @ptrCast(p_buffer_create_info),
+            @ptrCast(p_allocation_create_info),
+            &type_index,
+        );
+        try vkCheck(result);
+        return type_index;
+    }
 
-pub fn invalidateAllocations(
-    allocator: Allocator,
-    allocation_count: u32,
-    allocations: []const Allocation,
-    offsets: ?[]const vk.DeviceSize,
-    sizes: ?[]const vk.DeviceSize,
-) Error!void {
-    const result = c.vmaInvalidateAllocations(
-        allocator,
-        allocation_count,
-        allocations,
-        offsets,
-        sizes,
-    );
-    try vkCheck(result);
-}
+    pub fn findMemoryTypeIndexForImageInfo(
+        self: @This(),
+        p_image_create_info: *const vk.ImageCreateInfo,
+        p_allocation_create_info: *const AllocationCreateInfo,
+    ) Error!u32 {
+        var type_index: u32 = undefined;
+        const result = c.vmaFindMemoryTypeIndexForImageInfo(
+            self.handle,
+            @ptrCast(p_image_create_info),
+            @ptrCast(p_allocation_create_info),
+            &type_index,
+        );
+        try vkCheck(result);
+        return type_index;
+    }
 
-pub fn copyMemoryToAllocation(
-    allocator: Allocator,
-    p_src_host_pointer: ?*const anyopaque,
-    dst_allocation: Allocation,
-    dst_allocation_local_offset: vk.DeviceSize,
-    size: vk.DeviceSize,
-) Error!void {
-    const result = c.vmaCopyMemoryToAllocation(
-        allocator,
-        p_src_host_pointer,
-        dst_allocation,
-        dst_allocation_local_offset,
-        size,
-    );
-    try vkCheck(result);
-}
+    pub fn createPool(self: @This(), p_create_info: *const PoolCreateInfo) Error!Pool {
+        var pool: Pool = undefined;
+        const result = c.vmaCreatePool(self.handle, @ptrCast(p_create_info), @ptrCast(&pool));
+        try vkCheck(result);
+        return pool;
+    }
 
-pub fn copyAllocationToMemory(
-    allocator: Allocator,
-    src_allocation: Allocation,
-    src_allocation_local_offset: vk.DeviceSize,
-    p_dst_host_pointer: ?*anyopaque,
-    size: vk.DeviceSize,
-) Error!void {
-    const result = c.vmaCopyAllocationToMemory(
-        allocator,
-        src_allocation,
-        src_allocation_local_offset,
-        p_dst_host_pointer,
-        size,
-    );
-    try vkCheck(result);
-}
+    pub fn destroyPool(self: @This(), pool: Pool) void {
+        c.vmaDestroyPool(self.handle, pool);
+    }
 
-pub fn checkCorruption(allocator: Allocator, memory_type_bits: u32) Error!void {
-    const result = c.vmaCheckCorruption(allocator, memory_type_bits);
-    try vkCheck(result);
-}
+    pub fn getPoolStatistics(self: @This(), pool: Pool) Statistics {
+        var stats: Statistics = undefined;
+        c.vmaGetPoolStatistics(self.handle, pool, @ptrCast(&stats));
+        return stats;
+    }
 
-pub fn beginDefragmentation(
-    allocator: Allocator,
-    p_info: *const DefragmentationInfo,
-) Error!DefragmentationContext {
-    var context: DefragmentationContext = undefined;
-    const result = c.vmaBeginDefragmentation(allocator, @ptrCast(p_info), @ptrCast(&context));
-    try vkCheck(result);
-    return context;
-}
+    pub fn calculatePoolStatistics(self: @This(), pool: Pool) DetailedStatistics {
+        var stats: DetailedStatistics = undefined;
+        c.vmaCalculatePoolStatistics(self.handle, pool, @ptrCast(&stats));
+        return stats;
+    }
 
-pub fn endDefragmentation(
-    allocator: Allocator,
-    context: DefragmentationContext,
-    p_stats: ?*DefragmentationStats,
-) void {
-    c.vmaEndDefragmentation(allocator, context, @ptrCast(p_stats));
-}
+    pub fn vmaCheckPoolCorruption(self: @This(), pool: Pool) Error!void {
+        const result = c.vmaCheckPoolCorruption(self.handle, pool);
+        try vkCheck(result);
+    }
 
-pub fn beginDefragmentationPass(
-    allocator: Allocator,
-    context: DefragmentationContext,
-) Error!DefragmentationPassMoveInfo {
-    var pass_info: DefragmentationPassMoveInfo = undefined;
-    const result = c.vmaBeginDefragmentationPass(allocator, context, @ptrCast(&pass_info));
-    try vkCheck(result);
-    return pass_info;
-}
+    pub fn getPoolName(self: @This(), pool: Pool) ?[*:0]const u8 {
+        var name: ?[*:0]const u8 = undefined;
+        c.vmaGetPoolName(self.handle, pool, &name);
+        return name;
+    }
 
-pub fn endDefragmentationPass(
-    allocator: Allocator,
-    context: DefragmentationContext,
-    p_pass_info: *DefragmentationPassMoveInfo,
-) Error!void {
-    const result = c.vmaEndDefragmentationPass(allocator, context, @ptrCast(p_pass_info));
-    try vkCheck(result);
-}
+    pub fn setPoolName(self: @This(), pool: Pool, name: ?[*:0]const u8) void {
+        c.vmaSetPoolName(self.handle, pool, name);
+    }
 
-pub fn bindBufferMemory(
-    allocator: Allocator,
-    allocation: Allocation,
-    buffer: vk.Buffer,
-) Error!void {
-    const result = c.vmaBindBufferMemory(
-        allocator,
-        allocation,
-        zigHandleToC(c.VkBuffer, buffer),
-    );
-    try vkCheck(result);
-}
+    pub fn allocateMemory(
+        self: @This(),
+        p_vk_memory_requirements: *const vk.MemoryRequirements,
+        p_allocation_info: ?*AllocationInfo,
+    ) Error!Allocation {
+        var allocation: Allocation = undefined;
+        const result = c.vmaAllocatorMemory(
+            self.handle,
+            @ptrCast(p_vk_memory_requirements),
+            @ptrCast(&allocation),
+            @ptrCast(p_allocation_info),
+        );
+        try vkCheck(result);
+        return allocation;
+    }
 
-pub fn bindBufferMemory2(
-    allocator: Allocator,
-    allocation: Allocation,
-    allocation_local_offset: vk.DeviceSize,
-    buffer: vk.Buffer,
-    p_next: ?*const anyopaque,
-) Error!void {
-    const result = c.vmaBindBufferMemory2(
-        allocator,
-        allocation,
-        allocation_local_offset,
-        zigHandleToC(c.VkBuffer, buffer),
-        p_next,
-    );
-    try vkCheck(result);
-}
+    pub fn allocateMemoryPages(
+        self: @This(),
+        p_vk_memory_requirements: [*]const vk.MemoryRequirements,
+        p_create_info: [*]const AllocationCreateInfo,
+        allocation_count: usize,
+        p_allocations: [*]Allocation,
+        p_allocation_info: ?[*]AllocationInfo,
+    ) Error!void {
+        const result = c.vmaAllocateMemoryPages(
+            self.handle,
+            @ptrCast(p_vk_memory_requirements.ptr),
+            @ptrCast(p_create_info.ptr),
+            allocation_count,
+            @ptrCast(p_allocations),
+            @ptrCast(p_allocation_info),
+        );
+        try vkCheck(result);
+    }
 
-pub fn bindImageMemory(
-    allocator: Allocator,
-    allocation: Allocation,
-    image: vk.Image,
-) Error!void {
-    const result = c.vmaBindImageMemory(
-        allocator,
-        allocation,
-        zigHandleToC(c.VkImage, image),
-    );
-    try vkCheck(result);
-}
+    pub fn allocateMemoryForBuffer(
+        self: @This(),
+        buffer: vk.Buffer,
+        p_create_info: *const AllocationCreateInfo,
+        p_allocation_info: ?*AllocationInfo,
+    ) Error!Allocation {
+        var allocation: Allocation = undefined;
+        const result = c.vmaAllocateMemoryForBuffer(
+            self.handle,
+            zigHandleToC(c.VkBuffer, buffer),
+            @ptrCast(p_create_info),
+            @ptrCast(&allocation),
+            @ptrCast(p_allocation_info),
+        );
+        try vkCheck(result);
+        return allocation;
+    }
 
-pub fn bindImageMemory2(
-    allocator: Allocator,
-    allocation: Allocation,
-    allocation_local_offset: vk.DeviceSize,
-    image: vk.Image,
-    p_next: ?*const anyopaque,
-) Error!void {
-    const result = c.vmaBindImageMemory2(
-        allocator,
-        allocation,
-        allocation_local_offset,
-        zigHandleToC(c.VkImage, image),
-        p_next,
-    );
-    try vkCheck(result);
-}
+    pub fn allocateMemoryForImage(
+        self: @This(),
+        image: vk.Image,
+        p_create_info: *const AllocationCreateInfo,
+        p_allocation_info: ?*AllocationInfo,
+    ) Error!Allocation {
+        var allocation: Allocation = undefined;
+        const result = c.vmaAllocateMemoryForImage(
+            self.handle,
+            zigHandleToC(c.VkImage, image),
+            @ptrCast(p_create_info),
+            @ptrCast(&allocation),
+            @ptrCast(p_allocation_info),
+        );
+        try vkCheck(result);
+        return allocation;
+    }
 
-pub fn createBuffer(
-    allocator: Allocator,
-    p_buffer_create_info: *const vk.BufferCreateInfo,
-    p_allocation_create_info: *const AllocationCreateInfo,
-    p_allocation_info: ?*AllocationInfo,
-) Error!AllocatedBuffer {
-    var buffer: vk.Buffer = undefined;
-    var allocation: Allocation = undefined;
-    const result = c.vmaCreateBuffer(
-        allocator,
-        @ptrCast(p_buffer_create_info),
-        @ptrCast(p_allocation_create_info),
-        @ptrCast(&buffer),
-        @ptrCast(&allocation),
-        @ptrCast(p_allocation_info),
-    );
-    try vkCheck(result);
-    return .{ .handle = buffer, .allocation = allocation };
-}
+    pub fn freeMemory(self: @This(), allocation: Allocation) void {
+        c.vmaFreeMemory(self.handle, allocation);
+    }
 
-pub fn createBufferWithAlignment(
-    allocator: Allocator,
-    p_buffer_create_info: *const vk.BufferCreateInfo,
-    p_allocation_create_info: *const AllocationCreateInfo,
-    min_alignment: vk.DeviceSize,
-    p_allocation_info: ?*AllocationInfo,
-) Error!AllocatedBuffer {
-    var buffer: vk.Buffer = undefined;
-    var allocation: Allocation = undefined;
-    const result = c.vmaCreateBufferWithAlignment(
-        allocator,
-        @ptrCast(p_buffer_create_info),
-        @ptrCast(p_allocation_create_info),
-        min_alignment,
-        @ptrCast(&buffer),
-        @ptrCast(&allocation),
-        @ptrCast(p_allocation_info),
-    );
-    try vkCheck(result);
-    return .{ .handle = buffer, .allocation = allocation };
-}
+    pub fn freeMemoryPages(self: @This(), allocations: ?[]const Allocation) void {
+        if (allocations) |allocs| {
+            c.vmaFreeMemoryPages(self.handle, allocs.len, allocs.ptr);
+        }
+    }
 
-pub fn createAliasingBuffer(
-    allocator: Allocator,
-    allocation: Allocation,
-    p_buffer_create_info: *const vk.BufferCreateInfo,
-) Error!vk.Buffer {
-    var buffer: vk.Buffer = undefined;
-    const result = c.vmaCreateAliasingBuffer(
-        allocator,
-        allocation,
-        @ptrCast(p_buffer_create_info),
-        @ptrCast(&buffer),
-    );
-    try vkCheck(result);
-    return buffer;
-}
+    pub fn getAllocationInfo(self: @This(), allocation: Allocation) AllocationInfo {
+        var alloc_info: AllocationInfo = undefined;
+        c.vmaGetAllocationInfo(self.handle, allocation, @ptrCast(&alloc_info));
+        return alloc_info;
+    }
 
-pub fn createAliasingBuffer2(
-    allocator: Allocator,
-    allocation: Allocation,
-    allocation_local_offset: vk.DeviceSize,
-    p_buffer_create_info: *const vk.BufferCreateInfo,
-) Error!vk.Buffer {
-    var buffer: vk.Buffer = undefined;
-    const result = c.vmaCreateAliasingBuffer2(
-        allocator,
-        allocation,
-        allocation_local_offset,
-        @ptrCast(p_buffer_create_info),
-        @ptrCast(&buffer),
-    );
-    try vkCheck(result);
-    return buffer;
-}
+    pub fn getAllocationInfo2(self: @This(), allocation: Allocation) AllocationInfo2 {
+        var alloc_info: AllocationInfo2 = undefined;
+        c.vmaGetAllocationInfo(self.handle, allocation, @ptrCast(&alloc_info));
+        return alloc_info;
+    }
 
-pub fn destroyBuffer(allocator: Allocator, buffer: vk.Buffer, allocation: Allocation) void {
-    c.vmaDestroyBuffer(allocator, zigHandleToC(c.VkBuffer, buffer), allocation);
-}
+    pub fn setAllocationUserData(
+        self: @This(),
+        allocation: Allocation,
+        p_user_data: ?*anyopaque,
+    ) void {
+        c.vmaSetAllocationUserData(self.handle, allocation, p_user_data);
+    }
 
-pub fn createImage(
-    allocator: Allocator,
-    p_image_create_info: *const vk.ImageCreateInfo,
-    p_allocation_create_info: *const AllocationCreateInfo,
-    p_allocation_info: ?*AllocationInfo,
-) Error!AllocatedImage {
-    var image: vk.Image = undefined;
-    var allocation: Allocation = undefined;
-    const result = c.vmaCreateImage(
-        allocator,
-        @ptrCast(p_image_create_info),
-        @ptrCast(p_allocation_create_info),
-        @ptrCast(&image),
-        @ptrCast(&allocation),
-        @ptrCast(p_allocation_info),
-    );
-    try vkCheck(result);
-    return .{ .handle = image, .allocation = allocation };
-}
+    pub fn setAllocationName(
+        self: @This(),
+        allocation: Allocation,
+        p_name: ?[*:0]const u8,
+    ) void {
+        c.vmaSetAllocationName(self.handle, allocation, p_name);
+    }
 
-pub fn createAliasingImage(
-    allocator: Allocator,
-    allocation: Allocation,
-    p_image_create_info: *const vk.ImageCreateInfo,
-) Error!vk.Image {
-    var image: vk.Image = undefined;
-    const result = c.vmaCreateAliasingImage(
-        allocator,
-        allocation,
-        @ptrCast(p_image_create_info),
-        @ptrCast(&image),
-    );
-    try vkCheck(result);
-    return image;
-}
+    pub fn getAllocationMemoryProperties(
+        self: @This(),
+        allocation: Allocation,
+    ) vk.MemoryPropertyFlags {
+        var flags: vk.MemoryPropertyFlags = undefined;
+        c.vmaGetAllocationMemoryProperties(self.handle, allocation, @ptrCast(&flags));
+        return flags;
+    }
 
-pub fn createAliasingImage2(
-    allocator: Allocator,
-    allocation: Allocation,
-    allocation_local_offset: vk.DeviceSize,
-    p_image_create_info: *const vk.ImageCreateInfo,
-) Error!vk.Image {
-    var image: vk.Image = undefined;
-    const result = c.vmaCreateAliasingImage2(
-        allocator,
-        allocation,
-        allocation_local_offset,
-        @ptrCast(p_image_create_info),
-        @ptrCast(&image),
-    );
-    try vkCheck(result);
-    return image;
-}
+    pub fn mapMemory(self: @This(), allocation: Allocation) Error!?*anyopaque {
+        var ptr: ?*anyopaque = undefined;
+        const result = c.vmaMapMemory(self.handle, allocation, &ptr);
+        try vkCheck(result);
+        return ptr;
+    }
 
-pub fn destroyImage(allocator: Allocator, image: vk.Image, allocation: Allocation) void {
-    c.vmaDestroyImage(allocator, zigHandleToC(c.VkImage, image), allocation);
-}
+    pub fn unmapMemory(self: @This(), allocation: Allocation) void {
+        c.vmaUnmapMemory(self.handle, allocation);
+    }
 
-pub fn createVirtualBlock(p_create_info: *const VirtualBlockCreateInfo) Error!VirtualBlock {
-    var block: VirtualBlock = undefined;
-    const result = c.vmaCreateVirtualBlock(@ptrCast(p_create_info), &block);
-    try vkCheck(result);
-    return block;
-}
+    pub fn flushAllocation(
+        self: @This(),
+        allocation: Allocation,
+        offset: vk.DeviceSize,
+        size: vk.DeviceSize,
+    ) Error!void {
+        const result = c.vmaFlushAllocation(self.handle, allocation, offset, size);
+        try vkCheck(result);
+    }
 
-pub fn destroyVirtualBlock(virtual_block: VirtualBlock) void {
-    c.vmaDestroyVirtualBlock(virtual_block);
-}
+    pub fn invalidateAllocation(
+        self: @This(),
+        allocation: Allocation,
+        offset: vk.DeviceSize,
+        size: vk.DeviceSize,
+    ) Error!void {
+        const result = c.vmaInvalidateAllocation(self.handle, allocation, offset, size);
+        try vkCheck(result);
+    }
 
-pub fn isVirtualBlockEmpty(virtual_block: VirtualBlock) vk.Bool32 {
-    return c.vmaIsVirtualBlockEmpty(virtual_block);
-}
+    pub fn flushAllocations(
+        self: @This(),
+        allocation_count: u32,
+        allocations: [*]const Allocation,
+        offsets: ?[*]const vk.DeviceSize,
+        sizes: ?[*]const vk.DeviceSize,
+    ) Error!void {
+        const result = c.vmaFlushAllocations(
+            self.handle,
+            allocation_count,
+            @ptrCast(allocations),
+            @ptrCast(offsets),
+            @ptrCast(sizes),
+        );
+        try vkCheck(result);
+    }
 
-pub fn getVirtualAllocationInfo(
-    virtual_block: VirtualBlock,
-    allocation: VirtualAllocation,
-) VirtualAllocationInfo {
-    var info: VirtualAllocationInfo = undefined;
-    c.vmaGetVirtualAllocationInfo(virtual_block, allocation, @ptrCast(&info));
-    return info;
-}
+    pub fn invalidateAllocations(
+        self: @This(),
+        allocation_count: u32,
+        allocations: []const Allocation,
+        offsets: ?[]const vk.DeviceSize,
+        sizes: ?[]const vk.DeviceSize,
+    ) Error!void {
+        const result = c.vmaInvalidateAllocations(
+            self.handle,
+            allocation_count,
+            allocations,
+            offsets,
+            sizes,
+        );
+        try vkCheck(result);
+    }
 
-pub fn virtualAllocate(
-    virtual_block: VirtualBlock,
-    p_create_info: *const VirtualAllocationCreateInfo,
-    p_offset: ?*vk.DeviceSize,
-) Error!VirtualAllocation {
-    var allocation: VirtualAllocation = undefined;
-    const result = c.vmaVirtualAllocate(
-        virtual_block,
-        @ptrCast(p_create_info),
-        &allocation,
-        @ptrCast(p_offset),
-    );
-    try vkCheck(result);
-    return allocation;
-}
+    pub fn copyMemoryToAllocation(
+        self: @This(),
+        p_src_host_pointer: ?*const anyopaque,
+        dst_allocation: Allocation,
+        dst_allocation_local_offset: vk.DeviceSize,
+        size: vk.DeviceSize,
+    ) Error!void {
+        const result = c.vmaCopyMemoryToAllocation(
+            self.handle,
+            p_src_host_pointer,
+            dst_allocation,
+            dst_allocation_local_offset,
+            size,
+        );
+        try vkCheck(result);
+    }
 
-pub fn virtualFree(virtual_block: VirtualBlock, allocation: VirtualAllocation) void {
-    c.vmaVirtualFree(virtual_block, allocation);
-}
+    pub fn copyAllocationToMemory(
+        self: @This(),
+        src_allocation: Allocation,
+        src_allocation_local_offset: vk.DeviceSize,
+        p_dst_host_pointer: ?*anyopaque,
+        size: vk.DeviceSize,
+    ) Error!void {
+        const result = c.vmaCopyAllocationToMemory(
+            self.handle,
+            src_allocation,
+            src_allocation_local_offset,
+            p_dst_host_pointer,
+            size,
+        );
+        try vkCheck(result);
+    }
 
-pub fn clearVirtualBlock(virtual_block: VirtualBlock) void {
-    c.vmaClearVirtualBlock(virtual_block);
-}
+    pub fn checkCorruption(self: @This(), memory_type_bits: u32) Error!void {
+        const result = c.vmaCheckCorruption(self.handle, memory_type_bits);
+        try vkCheck(result);
+    }
 
-pub fn setVirtualAllocationUserData(
-    virtual_block: VirtualBlock,
-    allocation: VirtualAllocation,
-    p_user_data: ?*anyopaque,
-) void {
-    c.vmaSetVirtualAllocationUserData(virtual_block, allocation, p_user_data);
-}
+    pub fn beginDefragmentation(
+        self: @This(),
+        p_info: *const DefragmentationInfo,
+    ) Error!DefragmentationContext {
+        var context: DefragmentationContext = undefined;
+        const result = c.vmaBeginDefragmentation(self.handle, @ptrCast(p_info), @ptrCast(&context));
+        try vkCheck(result);
+        return context;
+    }
 
-pub fn getVirtualBlockStatistics(virtual_block: VirtualBlock) Statistics {
-    var stats: Statistics = undefined;
-    c.vmaGetVirtualBlockStatistics(virtual_block, @ptrCast(&stats));
-    return stats;
-}
+    pub fn endDefragmentation(
+        self: @This(),
+        context: DefragmentationContext,
+        p_stats: ?*DefragmentationStats,
+    ) void {
+        c.vmaEndDefragmentation(self.handle, context, @ptrCast(p_stats));
+    }
 
-pub fn calculateVirtualBlockStatistics(virtual_block: VirtualBlock) DetailedStatistics {
-    var stats: DetailedStatistics = undefined;
-    c.vmaCalculateVirtualBlockStatistics(virtual_block, @ptrCast(&stats));
-    return stats;
-}
+    pub fn beginDefragmentationPass(
+        self: @This(),
+        context: DefragmentationContext,
+    ) Error!DefragmentationPassMoveInfo {
+        var pass_info: DefragmentationPassMoveInfo = undefined;
+        const result = c.vmaBeginDefragmentationPass(self.handle, context, @ptrCast(&pass_info));
+        try vkCheck(result);
+        return pass_info;
+    }
 
-pub fn buildVirtualBlockStatsString(allocator: Allocator, detailed_map: vk.Bool32) ?[*:0]u8 {
-    var ptr: ?[*:0]u8 = undefined;
-    c.vmaBuildVirtualBlockStatsString(allocator, &ptr, detailed_map);
-    return ptr;
-}
+    pub fn endDefragmentationPass(
+        self: @This(),
+        context: DefragmentationContext,
+        p_pass_info: *DefragmentationPassMoveInfo,
+    ) Error!void {
+        const result = c.vmaEndDefragmentationPass(self.handle, context, @ptrCast(p_pass_info));
+        try vkCheck(result);
+    }
 
-pub fn freeVirtualBlockStatsString(allocator: Allocator, p_stats_string: ?[*:0]u8) void {
-    c.vmaFreeVirtualBlockStatsString(allocator, p_stats_string);
-}
+    pub fn bindBufferMemory(
+        self: @This(),
+        allocation: Allocation,
+        buffer: vk.Buffer,
+    ) Error!void {
+        const result = c.vmaBindBufferMemory(
+            self.handle,
+            allocation,
+            zigHandleToC(c.VkBuffer, buffer),
+        );
+        try vkCheck(result);
+    }
 
-pub fn buildStatsString(allocator: Allocator, detailed_map: vk.Bool32) ?[*:0]u8 {
-    var ptr: ?[*:0]u8 = undefined;
-    c.vmaBuildStatsString(allocator, &ptr, detailed_map);
-    return ptr;
-}
+    pub fn bindBufferMemory2(
+        self: @This(),
+        allocation: Allocation,
+        allocation_local_offset: vk.DeviceSize,
+        buffer: vk.Buffer,
+        p_next: ?*const anyopaque,
+    ) Error!void {
+        const result = c.vmaBindBufferMemory2(
+            self.handle,
+            allocation,
+            allocation_local_offset,
+            zigHandleToC(c.VkBuffer, buffer),
+            p_next,
+        );
+        try vkCheck(result);
+    }
 
-pub fn freeStatsString(allocator: Allocator, p_stats_string: ?[*:0]u8) void {
-    c.vmaFreeStatsString(allocator, p_stats_string);
-}
+    pub fn bindImageMemory(
+        self: @This(),
+        allocation: Allocation,
+        image: vk.Image,
+    ) Error!void {
+        const result = c.vmaBindImageMemory(
+            self.handle,
+            allocation,
+            zigHandleToC(c.VkImage, image),
+        );
+        try vkCheck(result);
+    }
+
+    pub fn bindImageMemory2(
+        self: @This(),
+        allocation: Allocation,
+        allocation_local_offset: vk.DeviceSize,
+        image: vk.Image,
+        p_next: ?*const anyopaque,
+    ) Error!void {
+        const result = c.vmaBindImageMemory2(
+            self.handle,
+            allocation,
+            allocation_local_offset,
+            zigHandleToC(c.VkImage, image),
+            p_next,
+        );
+        try vkCheck(result);
+    }
+
+    pub fn createBuffer(
+        self: @This(),
+        p_buffer_create_info: *const vk.BufferCreateInfo,
+        p_allocation_create_info: *const AllocationCreateInfo,
+        p_allocation_info: ?*AllocationInfo,
+    ) Error!AllocatedBuffer {
+        var buffer: vk.Buffer = undefined;
+        var allocation: Allocation = undefined;
+        const result = c.vmaCreateBuffer(
+            self.handle,
+            @ptrCast(p_buffer_create_info),
+            @ptrCast(p_allocation_create_info),
+            @ptrCast(&buffer),
+            @ptrCast(&allocation),
+            @ptrCast(p_allocation_info),
+        );
+        try vkCheck(result);
+        return .{ .handle = buffer, .allocation = allocation };
+    }
+
+    pub fn createBufferWithAlignment(
+        self: @This(),
+        p_buffer_create_info: *const vk.BufferCreateInfo,
+        p_allocation_create_info: *const AllocationCreateInfo,
+        min_alignment: vk.DeviceSize,
+        p_allocation_info: ?*AllocationInfo,
+    ) Error!AllocatedBuffer {
+        var buffer: vk.Buffer = undefined;
+        var allocation: Allocation = undefined;
+        const result = c.vmaCreateBufferWithAlignment(
+            self.handle,
+            @ptrCast(p_buffer_create_info),
+            @ptrCast(p_allocation_create_info),
+            min_alignment,
+            @ptrCast(&buffer),
+            @ptrCast(&allocation),
+            @ptrCast(p_allocation_info),
+        );
+        try vkCheck(result);
+        return .{ .handle = buffer, .allocation = allocation };
+    }
+
+    pub fn createAliasingBuffer(
+        self: @This(),
+        allocation: Allocation,
+        p_buffer_create_info: *const vk.BufferCreateInfo,
+    ) Error!vk.Buffer {
+        var buffer: vk.Buffer = undefined;
+        const result = c.vmaCreateAliasingBuffer(
+            self.handle,
+            allocation,
+            @ptrCast(p_buffer_create_info),
+            @ptrCast(&buffer),
+        );
+        try vkCheck(result);
+        return buffer;
+    }
+
+    pub fn createAliasingBuffer2(
+        self: @This(),
+        allocation: Allocation,
+        allocation_local_offset: vk.DeviceSize,
+        p_buffer_create_info: *const vk.BufferCreateInfo,
+    ) Error!vk.Buffer {
+        var buffer: vk.Buffer = undefined;
+        const result = c.vmaCreateAliasingBuffer2(
+            self.handle,
+            allocation,
+            allocation_local_offset,
+            @ptrCast(p_buffer_create_info),
+            @ptrCast(&buffer),
+        );
+        try vkCheck(result);
+        return buffer;
+    }
+
+    pub fn destroyBuffer(self: @This(), buffer: vk.Buffer, allocation: Allocation) void {
+        c.vmaDestroyBuffer(self.handle, zigHandleToC(c.VkBuffer, buffer), allocation);
+    }
+
+    pub fn createImage(
+        self: @This(),
+        p_image_create_info: *const vk.ImageCreateInfo,
+        p_allocation_create_info: *const AllocationCreateInfo,
+        p_allocation_info: ?*AllocationInfo,
+    ) Error!AllocatedImage {
+        var image: vk.Image = undefined;
+        var allocation: Allocation = undefined;
+        const result = c.vmaCreateImage(
+            self.handle,
+            @ptrCast(p_image_create_info),
+            @ptrCast(p_allocation_create_info),
+            @ptrCast(&image),
+            @ptrCast(&allocation),
+            @ptrCast(p_allocation_info),
+        );
+        try vkCheck(result);
+        return .{ .handle = image, .allocation = allocation };
+    }
+
+    pub fn createAliasingImage(
+        self: @This(),
+        allocation: Allocation,
+        p_image_create_info: *const vk.ImageCreateInfo,
+    ) Error!vk.Image {
+        var image: vk.Image = undefined;
+        const result = c.vmaCreateAliasingImage(
+            self.handle,
+            allocation,
+            @ptrCast(p_image_create_info),
+            @ptrCast(&image),
+        );
+        try vkCheck(result);
+        return image;
+    }
+
+    pub fn createAliasingImage2(
+        self: @This(),
+        allocation: Allocation,
+        allocation_local_offset: vk.DeviceSize,
+        p_image_create_info: *const vk.ImageCreateInfo,
+    ) Error!vk.Image {
+        var image: vk.Image = undefined;
+        const result = c.vmaCreateAliasingImage2(
+            self.handle,
+            allocation,
+            allocation_local_offset,
+            @ptrCast(p_image_create_info),
+            @ptrCast(&image),
+        );
+        try vkCheck(result);
+        return image;
+    }
+
+    pub fn destroyImage(self: @This(), image: vk.Image, allocation: Allocation) void {
+        c.vmaDestroyImage(self.handle, zigHandleToC(c.VkImage, image), allocation);
+    }
+
+    pub fn buildStatsString(self: @This(), detailed_map: vk.Bool32) ?[*:0]u8 {
+        var ptr: ?[*:0]u8 = undefined;
+        c.vmaBuildStatsString(self.handle, &ptr, detailed_map);
+        return ptr;
+    }
+
+    pub fn freeStatsString(self: @This(), p_stats_string: ?[*:0]u8) void {
+        c.vmaFreeStatsString(self.handle, p_stats_string);
+    }
+};
+
+pub const VirtualBlock = struct {
+    handle: VirtualBlockHandle,
+
+    pub fn create(p_create_info: *const VirtualBlockCreateInfo) Error!@This() {
+        var handle: VirtualBlockHandle = undefined;
+        const result = c.vmaCreateVirtualBlock(@ptrCast(p_create_info), &handle);
+        try vkCheck(result);
+        return .{ .handle = handle };
+    }
+
+    pub fn destroy(self: @This()) void {
+        c.vmaDestroyVirtualBlock(self.handle);
+    }
+
+    pub fn isVirtualBlockEmpty(self: @This()) vk.Bool32 {
+        return c.vmaIsVirtualBlockEmpty(self.handle);
+    }
+
+    pub fn getVirtualAllocationInfo(
+        self: @This(),
+        allocation: VirtualAllocation,
+    ) VirtualAllocationInfo {
+        var info: VirtualAllocationInfo = undefined;
+        c.vmaGetVirtualAllocationInfo(self.handle, allocation, @ptrCast(&info));
+        return info;
+    }
+
+    pub fn virtualAllocate(
+        self: @This(),
+        p_create_info: *const VirtualAllocationCreateInfo,
+        p_offset: ?*vk.DeviceSize,
+    ) Error!VirtualAllocation {
+        var allocation: VirtualAllocation = undefined;
+        const result = c.vmaVirtualAllocate(
+            self.handle,
+            @ptrCast(p_create_info),
+            &allocation,
+            @ptrCast(p_offset),
+        );
+        try vkCheck(result);
+        return allocation;
+    }
+
+    pub fn virtualFree(self: @This(), allocation: VirtualAllocation) void {
+        c.vmaVirtualFree(self.handle, allocation);
+    }
+
+    pub fn clearVirtualBlock(self: @This()) void {
+        c.vmaClearVirtualBlock(self.handle);
+    }
+
+    pub fn setVirtualAllocationUserData(
+        self: @This(),
+        allocation: VirtualAllocation,
+        p_user_data: ?*anyopaque,
+    ) void {
+        c.vmaSetVirtualAllocationUserData(self.handle, allocation, p_user_data);
+    }
+
+    pub fn getVirtualBlockStatistics(self: @This()) Statistics {
+        var stats: Statistics = undefined;
+        c.vmaGetVirtualBlockStatistics(self.handle, @ptrCast(&stats));
+        return stats;
+    }
+
+    pub fn calculateVirtualBlockStatistics(self: @This()) DetailedStatistics {
+        var stats: DetailedStatistics = undefined;
+        c.vmaCalculateVirtualBlockStatistics(self.handle, @ptrCast(&stats));
+        return stats;
+    }
+
+    pub fn buildVirtualBlockStatsString(self: @This(), detailed_map: vk.Bool32) ?[*:0]u8 {
+        var ptr: ?[*:0]u8 = undefined;
+        c.vmaBuildVirtualBlockStatsString(self.handle, &ptr, detailed_map);
+        return ptr;
+    }
+
+    pub fn freeVirtualBlockStatsString(self: @This(), p_stats_string: ?[*:0]u8) void {
+        c.vmaFreeVirtualBlockStatsString(self.handle, p_stats_string);
+    }
+};
 
 fn vkCheck(result: c.VkResult) Error!void {
     const r: vk.Result = @enumFromInt(result);
