@@ -21,10 +21,10 @@ pub fn main() !void {
     const window = try Window.init(allocator, 800, 600, "Vma");
     defer window.deinit(allocator);
 
-    const instance = try vkk.Instance.create(allocator, c.glfwGetInstanceProcAddress, .{});
+    const instance = try vkk.Instance.create(c.glfwGetInstanceProcAddress, .{});
     const surface = try window.createSurface(instance.handle);
-    const physical_device = try vkk.PhysicalDevice.select(allocator, &instance, .{ .surface = surface });
-    const device = try vkk.Device.create(allocator, &physical_device, null, null);
+    const physical_device = try vkk.PhysicalDevice.select(&instance, .{ .surface = surface });
+    const device = try vkk.Device.create(&physical_device, null, null);
 
     const vma_info: vma.AllocatorCreateInfo = .{
         .instance = instance.handle,
