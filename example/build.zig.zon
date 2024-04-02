@@ -11,12 +11,12 @@
         },
 
         .vulkan_zig = .{
-            .url = "https://github.com/Snektron/vulkan-zig/archive/ac4103a733c479b599aae8d42c08cabd7d5cf48a.tar.gz",
-            .hash = "122085abbcfa0328f5f6e0e702d25ee0a61bb92d0ce9ba415a2fea1d33f43129cb66",
+            .url = "https://github.com/Snektron/vulkan-zig/archive/e60869528c9da29d844aade1a8bb3caf45190d89.tar.gz",
+            .hash = "122061f0a16599a1c296a1847d6e34652e9b20ce3aff919d75562383ef0ba873df77",
         },
         .vk_kickstart = .{
-            .url = "https://github.com/Mikastiv/vk-kickstart/archive/79f5cf2d1acbf363c5a93391432102b3b7c8b6ae.tar.gz",
-            .hash = "1220f0a9bd6d4dc7c3a38ed02d4927293ce46244fc8dd5ae55e76ecfedddc593f1c4",
+            .url = "https://github.com/Mikastiv/vk-kickstart/archive/4b8891c6fa0852eaf702fe5b0a4152bd20b33ab0.tar.gz",
+            .hash = "122070859f1897ae10993857561a9d78195b372b41e9c227e0e63d6cdeeaf39809dc",
         },
     },
     .paths = .{
