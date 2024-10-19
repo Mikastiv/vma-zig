@@ -1,6 +1,6 @@
 const std = @import("std");
 const c = @import("c.zig");
-const vk = @import("vulkan-zig");
+const vk = @import("vulkan");
 
 fn zigHandleToC(comptime T: type, zig_handle: anytype) T {
     const Z = @typeInfo(@TypeOf(zig_handle));

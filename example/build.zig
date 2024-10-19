@@ -10,7 +10,7 @@ pub fn build(b: *std.Build) void {
         .registry = xml_path,
     });
 
-    const vkzig = b.dependency("vulkan_zig", .{
+    const vkzig = b.dependency("vulkan", .{
         .registry = xml_path,
     });
 
@@ -26,13 +26,13 @@ pub fn build(b: *std.Build) void {
 
     const exe = b.addExecutable(.{
         .name = "example",
-        .root_source_file = .{ .path = "src/main.zig" },
+        .root_source_file = b.path("src/main.zig"),
         .target = target,
         .optimize = optimize,
     });
     exe.root_module.addImport("vma-zig", vma_zig.module("vma-zig"));
     exe.root_module.addImport("vk-kickstart", kickstart_dep.module("vk-kickstart"));
-    exe.root_module.addImport("vulkan-zig", vkzig.module("vulkan-zig"));
+    exe.root_module.addImport("vulkan", vkzig.module("vulkan-zig"));
     exe.linkLibrary(glfw);
 
     b.installArtifact(exe);

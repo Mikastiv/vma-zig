@@ -6,17 +6,16 @@
             .path = "../",
         },
         .glfw = .{
-            .url = "https://pkg.machengine.org/glfw/586e14a964740747ca7913fc17096b3bb3d52409.tar.gz",
-            .hash = "122091debcee20ff2aaf983a9e8c215d4e50cc6caf44975442218901ea728e7dd79a",
-        },
-
-        .vulkan_zig = .{
-            .url = "https://github.com/Snektron/vulkan-zig/archive/e60869528c9da29d844aade1a8bb3caf45190d89.tar.gz",
-            .hash = "122061f0a16599a1c296a1847d6e34652e9b20ce3aff919d75562383ef0ba873df77",
+            .url = "https://pkg.machengine.org/glfw/e6f377baed70a7bef9fa08d808f40b64c5136bf6.tar.gz",
+            .hash = "1220c15e66c13f9633fcfd50b5ed265f74f2950c98b1f1defd66298fa027765e0190",
         },
         .vk_kickstart = .{
-            .url = "https://github.com/Mikastiv/vk-kickstart/archive/4b8891c6fa0852eaf702fe5b0a4152bd20b33ab0.tar.gz",
-            .hash = "122070859f1897ae10993857561a9d78195b372b41e9c227e0e63d6cdeeaf39809dc",
+            .url = "git+https://github.com/Mikastiv/vk-kickstart#e1eeab13be11ff5d1623ecf138917460380af5b8",
+            .hash = "1220845f656d9595d2549692f87cc3d923f12e629abef5f0accf52857b01e9a3d12b",
+        },
+        .vulkan = .{
+            .url = "git+https://github.com/Snektron/vulkan-zig#e43d635893de4c8b89d5ca8aa142984872b7e68f",
+            .hash = "122064f889ea10097a67fc28744fe95d0bfde9af252de147a9b90aa55cecfc30c01c",
         },
     },
     .paths = .{

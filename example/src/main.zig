@@ -1,6 +1,6 @@
 const std = @import("std");
 const vma = @import("vma-zig");
-const vk = @import("vulkan-zig");
+const vk = @import("vulkan");
 const vkk = @import("vk-kickstart");
 const c = @import("c.zig");
 const Window = @import("Window.zig");
@@ -21,15 +21,15 @@ pub fn main() !void {
     const window = try Window.init(allocator, 800, 600, "Vma");
     defer window.deinit(allocator);
 
-    const instance = try vkk.Instance.create(c.glfwGetInstanceProcAddress, .{});
-    const surface = try window.createSurface(instance.handle);
-    const physical_device = try vkk.PhysicalDevice.select(&instance, .{ .surface = surface });
-    const device = try vkk.Device.create(&physical_device, null, null);
+    const instance = try vkk.instance.create(c.glfwGetInstanceProcAddress, .{}, null);
+    const surface = try window.createSurface(instance);
+    const physical_device = try vkk.PhysicalDevice.select(instance, .{ .surface = surface });
+    const device = try vkk.device.create(&physical_device, null, null);
 
     const vma_info: vma.AllocatorCreateInfo = .{
-        .instance = instance.handle,
+        .instance = instance,
         .physical_device = physical_device.handle,
-        .device = device.handle,
+        .device = device,
     };
 
     const vma_alloc = try vma.Allocator.create(&vma_info);
@@ -37,9 +37,9 @@ pub fn main() !void {
 
     const info = vma_alloc.getAllocatorInfo();
 
-    log.info("{d} {d}", .{ instance.handle, info.instance });
+    log.info("{d} {d}", .{ instance, info.instance });
     log.info("{d} {d}", .{ physical_device.handle, info.physical_device });
-    log.info("{d} {d}", .{ device.handle, info.device });
+    log.info("{d} {d}", .{ device, info.device });
 
     const properties = vma_alloc.getPhysicalDeviceProperties();
 
